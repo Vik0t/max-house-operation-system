@@ -1,0 +1,63 @@
+house:
+  id: demo-house-b
+  address: "г. Новосибирск, ул. Полярная, 7"
+  region: "Новосибирская область"
+  management_org: "ТСЖ Полярное"
+  metadata:
+    entrances: 1
+    apartments: 72
+    year_built: 2006
+zones:
+  - id: house-b-common
+    type: common
+    name: "Общие зоны"
+  - id: house-b-entrance-1
+    type: entrance
+    number: "1"
+    name: "Подъезд 1"
+  - id: house-b-roof
+    type: roof
+    name: "Кровля"
+  - id: house-b-yard
+    type: yard
+    name: "Двор"
+assets:
+  - id: house-b-elevator-1
+    zone: house-b-entrance-1
+    type: elevator
+    name: "Лифт А"
+  - id: house-b-roof
+    zone: house-b-roof
+    type: roof
+    name: "Мягкая кровля"
+  - id: house-b-yard-light
+    zone: house-b-yard
+    type: lighting
+    name: "Дворовое освещение"
+routing:
+  elevator:
+    destination: polar-lift-contractor
+    destination_type: contractor
+    action_type: contractor_request
+    rationale: "По конфигурации дома лифты напрямую обслуживает подрядчик ТСЖ."
+    contractor: polar-lift-contractor
+  roof:
+    destination: tszh-polar
+    destination_type: management_org
+    action_type: service_request
+    rationale: "Кровля обслуживается ТСЖ Полярное."
+  lighting:
+    destination: city-lighting-b
+    destination_type: contractor
+    action_type: contractor_request
+    rationale: "Дворовое освещение передаётся профильному подрядчику по договору ТСЖ."
+  default:
+    destination: representative-house-b
+    destination_type: representative
+    action_type: manual_review
+    rationale: "Маршрут не определён с достаточной уверенностью; нужна ручная проверка."
+thresholds:
+  recurrence:
+    window_days: 60
+    count: 2
+

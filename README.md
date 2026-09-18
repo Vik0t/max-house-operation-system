@@ -1,0 +1,159 @@
+# ДомПульс / MAX
+
+Работающий P0 MVP операционного цифрового двойника многоквартирного дома:
+
+```text
+Signal → Issue / Initiative → House / Zone / Asset → Action → Submission
+→ WorkOrder → Evidence → Verification → House Memory
+```
+
+ДомПульс управляет состоянием объектов дома во времени. Главный proof — не карточка заявки, а полный цикл для `Подъезд 2 → Лифт №2` с историей повторений, работой исполнителя, evidence, проверкой жителем и обновлением Asset timeline.
+
+## Быстрый запуск
+
+### Prerequisites
+
+- Docker Desktop / Docker Engine с Compose v2;
+- свободные порты `3000` и `8000`;
+- для реального MAX — bot token, доверенный CA bundle Минцифры и публичный HTTPS webhook на порту 443.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Открыть:
+
+- mini-app: <http://localhost:3000>
+- OpenAPI: <http://localhost:8000/docs>
+- health: <http://localhost:8000/health>
+
+Первый запуск автоматически выполняет `alembic upgrade head` и загружает seed. Повторный запуск не дублирует данные.
+
+## Environment
+
+По умолчанию `.env.example` использует безопасный демонстрационный режим:
+
+```dotenv
+MAX_MODE=simulated
+LLM_MODE=deterministic
+```
+
+Для реального MAX задайте локально, не коммитьте:
+
+```dotenv
+MAX_MODE=real
+MAX_BOT_TOKEN=...
+MAX_CA_BUNDLE=/run/secrets/russian-trusted-ca.pem
+MAX_WEBHOOK_SECRET=...
+```
+
+`MAX_CA_BUNDLE` должен содержать доверенную цепочку Russian Trusted Root/Sub CA. Не отключайте TLS verification. Подробности: [docs/max_setup.md](docs/max_setup.md).
+
+## Demo за 4 минуты
+
+1. Откройте House A. В House State виден `Лифт №2`: текущая проблема, четвёртый incident за 90 дней, два source evidence и история трёх закрытых работ.
+2. Отправьте по очереди demo-сообщения: `лифт опять встал, второй подъезд`, `у меня тоже`, `вчера уже не работал лифт во втором подъезде`. Они войдут в один Issue; счётчик подтверждений станет 8.
+3. Откройте Issue и пройдите: `Подтвердить → Передать ответственному → Принять от имени УК → Назначить мастера → Начать работу → Добавить evidence → Завершить`.
+4. На вопрос «Проблема устранена?» нажмите `Да, работает`. Issue станет CLOSED, WorkOrder — ACCEPTED, Asset — HEALTHY, timeline сохранит результат.
+5. В Initiative «Второй фонарь на парковке» проголосуйте и нажмите `Зафиксировать результат`. Появится `FORMAL HANDOFF REQUIRED`; UI явно говорит, что это не ОСС.
+6. В верхнем selector переключитесь на House B: изменятся topology, УК, recurrence threshold и routing без изменения core-кода.
+
+Для reopen path на шаге 4 выберите `Нет, переоткрыть`; Issue станет REOPENED, WorkOrder — REWORK_REQUIRED, появится `Начать доработку`.
+
+Полный сценарий: [docs/demo.md](docs/demo.md).
+
+## Demo users / roles
+
+| Роль | Demo ID | Действия |
+|---|---|---|
+| Житель | `resident-demo` | signal, confirmation, poll, verification |
+| Представитель дома | `representative-demo` | action confirmation, submission, initiative handoff |
+| УК | `uk-demo` | accept, assign |
+| Исполнитель | `master-demo` | start, evidence, complete |
+
+Это фиксированные неперсональные demo identities. Production authentication/RBAC остаётся integration task.
+
+## Reset и migrations
+
+```bash
+./scripts/reset-demo.sh
+docker compose exec api alembic current
+docker compose exec api alembic upgrade head
+```
+
+Reset удаляет только данные и схему demo database из текущего Compose project, затем восстанавливает детерминированный seed.
+
+## Tests
+
+```bash
+./scripts/test.sh
+```
+
+Suite покрывает:
+
+- state machines и невозможные переходы;
+- config/schema, contextual duplicate scoring и recurrence;
+- AI structured extraction и synthetic eval;
+- API, database, AI fallback и MAX mock adapter;
+- webhook idempotency;
+- golden path 20 clean последовательных прогонов;
+- negative verification/rework;
+- Initiative flow;
+- second-house routing.
+
+Последний подтверждённый прогон: `19 passed`; production React build также проходит. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
+
+## Архитектура
+
+- `apps/api` — FastAPI, domain orchestration, adapters;
+- `apps/miniapp` — React/TypeScript mobile-first mini-app;
+- `configs` — house topology, routing, contractors, thresholds;
+- `alembic` — PostgreSQL migrations;
+- `datasets/house_chat_eval` — synthetic AI eval;
+- `tests` — unit, integration, E2E;
+- PostgreSQL хранит House State Graph обычными relation tables.
+
+Детали: [docs/architecture.md](docs/architecture.md), [docs/api.md](docs/api.md).
+
+## Real vs simulated
+
+| Интеграция | Статус |
+|---|---|
+| MAX Bot API adapter, webhook contract, secret validation, idempotency, notifications API | REAL-ready; UI показывает CONNECTED только после успешного strict-TLS `GET /me` |
+| Локальный direct input | REAL local input path |
+| AI pipeline | REAL deterministic structured pipeline; внешний LLM не требуется |
+| Отправка в УК / ГИС ЖКХ / Госуслуги Дом | SIMULATED, `Submission.is_simulated=true` |
+| Demo evidence и history | SYNTHETIC, помечено provenance |
+| Initiative poll | REAL внутри MVP, но не юридически значимое ОСС |
+
+## Security
+
+- `.env` и secrets исключены из Git и Docker build context;
+- токен передаётся MAX только в `Authorization` header;
+- webhook secret проверяется constant-time;
+- webhook и signal external IDs идемпотентны;
+- evidence URI валидируется, arbitrary file execution/upload отсутствует;
+- provenance разделяет OFFICIAL / USER / CALCULATED / AI_INFERENCE / SYNTHETIC;
+- state changes пишутся в append-only audit table;
+- зависимости backend зафиксированы версиями.
+
+Security notes: [docs/security.md](docs/security.md).
+
+## Ограничения MVP
+
+- Для real MAX webhook нужен публичный HTTPS endpoint на порту 443, group bot membership и право `read_all_messages`.
+- На окружениях без Russian Trusted Root/Sub CA MAX остаётся `REAL · CONFIGURED`, но не `CONNECTED`; приложение и основной direct-input flow продолжают работать.
+- Внешний LLM не подключён: deterministic pipeline выбран для воспроизводимого hackathon demo. Есть schema validation и fault injection fallback.
+- Нет production auth/RBAC, object storage, CRM/ГИС ЖКХ adapter и юридически значимого ОСС.
+- Eval dataset содержит 30 синтетических примеров, не 300–500 production-like сообщений; метрики нельзя обобщать на реальные чаты.
+
+## Основные документы
+
+- [Architecture](docs/architecture.md)
+- [API](docs/api.md)
+- [Demo runbook](docs/demo.md)
+- [MAX setup](docs/max_setup.md)
+- [AI metrics](docs/ai_metrics.md)
+- [Evidence registry](docs/evidence_registry.md)
+- [Security](docs/security.md)

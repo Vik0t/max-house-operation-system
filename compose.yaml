@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: dompuls
+      POSTGRES_USER: dompuls
+      POSTGRES_PASSWORD: dompuls
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dompuls -d dompuls"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - dompuls_pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://dompuls:dompuls@db:5432/dompuls
+      CORS_ORIGINS: http://localhost:${WEB_PORT:-3000}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/miniapp/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:${API_PORT:-8000}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    restart: unless-stopped
+
+volumes:
+  dompuls_pgdata:

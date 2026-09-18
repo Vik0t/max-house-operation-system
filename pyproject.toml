@@ -1,0 +1,30 @@
+[project]
+name = "dompuls"
+version = "0.1.0"
+description = "DomPuls operational digital twin MVP for MAX"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic==1.16.5",
+  "fastapi==0.116.1",
+  "httpx==0.28.1",
+  "psycopg[binary]==3.2.10",
+  "pydantic-settings==2.10.1",
+  "PyYAML==6.0.2",
+  "sqlalchemy==2.0.43",
+  "uvicorn[standard]==0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.4.2",
+  "pytest-cov==6.2.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["apps/api"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["apps/api/app"]
+

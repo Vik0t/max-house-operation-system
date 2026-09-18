@@ -1,0 +1,65 @@
+house:
+  id: demo-house-a
+  address: "г. Кольцово, Никольский проспект, 12"
+  region: "Новосибирская область"
+  management_org: "УК ДомСервис — демо"
+  metadata:
+    entrances: 2
+    apartments: 160
+    year_built: 2018
+zones:
+  - id: house-a-common
+    type: common
+    name: "Общие зоны"
+  - id: house-a-entrance-1
+    type: entrance
+    number: "1"
+    name: "Подъезд 1"
+  - id: house-a-entrance-2
+    type: entrance
+    number: "2"
+    name: "Подъезд 2"
+  - id: house-a-yard
+    type: yard
+    name: "Двор и парковка"
+assets:
+  - id: house-a-elevator-1
+    zone: house-a-entrance-1
+    type: elevator
+    name: "Лифт №1"
+    attributes: {model: "КМЗ", commissioned: 2018}
+  - id: house-a-elevator-2
+    zone: house-a-entrance-2
+    type: elevator
+    name: "Лифт №2"
+    attributes: {model: "КМЗ", commissioned: 2018}
+  - id: house-a-lighting-2
+    zone: house-a-entrance-2
+    type: lighting
+    name: "Освещение подъезда 2"
+  - id: house-a-parking-light
+    zone: house-a-yard
+    type: lighting
+    name: "Освещение парковки"
+routing:
+  elevator:
+    destination: uk-domservice
+    destination_type: management_org
+    action_type: service_request
+    rationale: "Лифт относится к общему имуществу; маршрут задан конфигурацией дома."
+    contractor: lift-service-a
+  lighting:
+    destination: uk-domservice
+    destination_type: management_org
+    action_type: service_request
+    rationale: "Освещение общей зоны обслуживает управляющая организация."
+  default:
+    destination: representative-house-a
+    destination_type: representative
+    action_type: manual_review
+    rationale: "Маршрут не определён с достаточной уверенностью; нужна ручная проверка."
+thresholds:
+  recurrence:
+    window_days: 90
+    count: 3
+

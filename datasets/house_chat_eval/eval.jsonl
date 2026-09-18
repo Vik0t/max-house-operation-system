@@ -1,0 +1,30 @@
+{"text":"лифт не работает в первом подъезде","intent":"issue","category":"elevator"}
+{"text":"лифт опять встал во втором подъезде","intent":"issue","category":"elevator"}
+{"text":"в кабине лифта застряли люди","intent":"issue","category":"elevator"}
+{"text":"снова сломался лифт №2","intent":"issue","category":"elevator"}
+{"text":"не работает свет на пятом этаже","intent":"issue","category":"lighting"}
+{"text":"перегорела лампа в подъезде","intent":"issue","category":"lighting"}
+{"text":"на лестнице нет света","intent":"issue","category":"lighting"}
+{"text":"фонарь во дворе не работает","intent":"issue","category":"lighting"}
+{"text":"течёт вода возле второго подъезда","intent":"issue","category":"water"}
+{"text":"в подвале протечка воды","intent":"issue","category":"water"}
+{"text":"опять нет воды","intent":"issue","category":"water"}
+{"text":"вода течет из стояка","intent":"issue","category":"water"}
+{"text":"батареи холодные во всем доме","intent":"issue","category":"heating"}
+{"text":"не работает отопление","intent":"issue","category":"heating"}
+{"text":"снова холодно из-за батарей","intent":"issue","category":"heating"}
+{"text":"грязно в первом подъезде","intent":"issue","category":"cleaning"}
+{"text":"уборки не было неделю","intent":"issue","category":"cleaning"}
+{"text":"мусор лежит у входа","intent":"issue","category":"cleaning"}
+{"text":"сломалась входная дверь","intent":"issue","category":"door"}
+{"text":"домофон опять не работает","intent":"issue","category":"door"}
+{"text":"заедает замок на двери","intent":"issue","category":"door"}
+{"text":"на парковке нужен второй фонарь","intent":"initiative","category":"lighting"}
+{"text":"предлагаю поставить лавочку во дворе","intent":"initiative","category":"other"}
+{"text":"давайте установим велопарковку","intent":"initiative","category":"other"}
+{"text":"хотелось бы второй фонарь у въезда","intent":"initiative","category":"lighting"}
+{"text":"нужно поставить камеру во дворе","intent":"initiative","category":"other"}
+{"text":"у меня тоже","intent":"confirmation"}
+{"text":"подтверждаю","intent":"confirmation"}
+{"text":"да, не работает","intent":"confirmation"}
+{"text":"тоже не работает","intent":"confirmation"}

@@ -1,0 +1,88 @@
+import asyncio
+from abc import ABC, abstractmethod
+from typing import Any
+
+import httpx
+
+from ..settings import Settings
+
+
+class MaxAdapterError(RuntimeError):
+    pass
+
+
+class MaxAdapter(ABC):
+    mode: str
+
+    @abstractmethod
+    async def get_bot(self) -> dict[str, Any]: ...
+
+    @abstractmethod
+    async def send_message(self, *, text: str, chat_id: str | None = None, user_id: str | None = None) -> dict[str, Any]: ...
+
+    @abstractmethod
+    async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]: ...
+
+
+class MockMaxAdapter(MaxAdapter):
+    mode = "SIMULATED"
+
+    async def get_bot(self) -> dict[str, Any]:
+        return {"is_bot": True, "first_name": "ДомПульс Demo", "username": "dompuls_demo_bot", "simulated": True}
+
+    async def send_message(self, *, text: str, chat_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
+        return {"delivered": True, "simulated": True, "chat_id": chat_id, "user_id": user_id, "text": text}
+
+    async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]:
+        return {"chat_id": chat_id, "permissions": [], "has_read_all_messages": False, "simulated": True}
+
+
+class RealMaxAdapter(MaxAdapter):
+    mode = "REAL"
+
+    def __init__(self, settings: Settings):
+        if not settings.max_bot_token:
+            raise MaxAdapterError("MAX_MODE=real requires MAX_BOT_TOKEN")
+        self.base_url = settings.max_api_base.rstrip("/")
+        self.headers = {"Authorization": settings.max_bot_token}
+        self.verify: bool | str = settings.max_ca_bundle or True
+
+    async def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=8.0, verify=self.verify) as client:
+                    response = await client.request(method, f"{self.base_url}{path}", headers=self.headers, **kwargs)
+                response.raise_for_status()
+                return response.json()
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
+                last_error = exc
+                status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+                if status and status < 500 and status != 429:
+                    break
+                if attempt < 2:
+                    await asyncio.sleep(0.2 * (2**attempt))
+        raise MaxAdapterError(f"MAX API request failed: {type(last_error).__name__}") from last_error
+
+    async def get_bot(self) -> dict[str, Any]:
+        return await self._request("GET", "/me")
+
+    async def send_message(self, *, text: str, chat_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
+        if not chat_id and not user_id:
+            raise MaxAdapterError("chat_id or user_id is required")
+        query = f"chat_id={chat_id}" if chat_id else f"user_id={user_id}"
+        return await self._request("POST", f"/messages?{query}", json={"text": text, "format": "markdown"})
+
+    async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]:
+        member = await self._request("GET", f"/chats/{chat_id}/members/me")
+        permissions = member.get("permissions") or []
+        return {
+            "chat_id": chat_id,
+            "permissions": permissions,
+            "has_read_all_messages": "read_all_messages" in permissions,
+            "simulated": False,
+        }
+
+
+def build_max_adapter(settings: Settings) -> MaxAdapter:
+    return RealMaxAdapter(settings) if settings.max_mode == "real" else MockMaxAdapter()
