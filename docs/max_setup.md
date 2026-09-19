@@ -9,6 +9,7 @@ The adapter follows the current MAX contract:
 - webhook authenticity: `X-Max-Bot-Api-Secret`;
 - group permission check: `GET /chats/{chatId}/members/me` and `read_all_messages`;
 - notification: `POST /messages?chat_id=...` or `user_id=...`;
+- inline actions: `inline_keyboard`, `open_app`, `message_callback` and `POST /answers`;
 - bounded retry for timeout, 429 and 5xx.
 
 ## Local configuration
@@ -42,7 +43,7 @@ The UI displays `REAL · BOT ONLINE` only after strict-TLS `GET /me` succeeds an
 
 ## Long Polling (hackathon/dev)
 
-`docker compose up --build -d` starts the worker automatically. It verifies the token with `GET /me`, refuses to start polling if a webhook subscription exists, then requests `message_created` updates and persists the returned marker in the `dompuls_bot_state` volume. Signal `external_id` is the MAX message ID, so replay cannot create a duplicate.
+`docker compose up --build -d` starts the worker automatically. It verifies the token with `GET /me`, refuses to start polling if a webhook subscription exists, then requests `message_created` and `message_callback` updates and persists the returned marker in the `dompuls_bot_state` volume. Signal `external_id` is the MAX message ID, so replay cannot create a duplicate.
 
 Supported commands:
 
@@ -51,6 +52,8 @@ Supported commands:
 - `/house_a` and `/house_b` — config-driven house switch for the current dialog/chat.
 
 Any other text enters the real Signal → Issue/Initiative pipeline. The response reports the created/clustered entity, state, confirmations and recurrence. According to MAX documentation, Long Polling is for development and testing, not production.
+
+Issue responses include `У меня тоже`, `open_app` and browser fallback buttons. Resident confirmation is idempotent per MAX user. Initiative options are callback buttons with one vote per user. The dialog is subscribed to the Issue state; after completion the bot sends `Исправлено` / `Не исправлено`, and the resident can close or reopen the loop without leaving MAX.
 
 The mini-app refreshes House State every five seconds, so a Signal received from MAX becomes visible without reloading the page.
 

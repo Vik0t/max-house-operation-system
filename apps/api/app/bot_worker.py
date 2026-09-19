@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from .integrations.max_adapter import MaxAdapter, MaxAdapterError, build_max_adapter
-from .integrations.max_updates import IncomingMaxMessage, parse_incoming_message
+from .integrations.max_updates import IncomingMaxCallback, IncomingMaxMessage, parse_incoming_callback, parse_incoming_message
 from .settings import Settings, get_settings
 
 
@@ -20,6 +20,7 @@ class PollState:
         self.path = Path(path)
         self.marker: int | None = None
         self.houses: dict[str, str] = {}
+        self.watchers: dict[str, dict[str, dict[str, str | None]]] = {}
         self.default_house_id = default_house_id
         self.load()
 
@@ -28,9 +29,11 @@ class PollState:
             raw = json.loads(self.path.read_text())
             self.marker = raw.get("marker")
             self.houses = raw.get("houses") or {}
+            self.watchers = raw.get("watchers") or {}
         except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
             self.marker = None
             self.houses = {}
+            self.watchers = {}
 
     def house_for(self, message: IncomingMaxMessage) -> str:
         return self.houses.get(message.conversation_key, self.default_house_id)
@@ -43,10 +46,33 @@ class PollState:
         self.marker = marker
         self.save()
 
+    def watch_issue(self, message: IncomingMaxMessage, issue: dict[str, Any]) -> None:
+        self.watch_target(message.conversation_key, message.chat_id, message.user_id, issue)
+
+    def watch_callback(self, callback: IncomingMaxCallback, issue: dict[str, Any]) -> None:
+        self.watch_target(callback.conversation_key, callback.chat_id, callback.user_id, issue)
+
+    def watch_target(
+        self,
+        conversation_key: str,
+        chat_id: str | None,
+        user_id: str,
+        issue: dict[str, Any],
+    ) -> None:
+        issue_id = issue.get("id")
+        if not issue_id:
+            return
+        self.watchers.setdefault(str(issue_id), {})[conversation_key] = {
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "last_state": issue.get("state"),
+        }
+        self.save()
+
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"marker": self.marker, "houses": self.houses}, ensure_ascii=False))
+        temporary.write_text(json.dumps({"marker": self.marker, "houses": self.houses, "watchers": self.watchers}, ensure_ascii=False))
         temporary.replace(self.path)
 
 
@@ -86,6 +112,68 @@ class DomPulsApi:
     async def house_status(self, house_id: str) -> dict[str, Any]:
         return await self.request("GET", f"/houses/{house_id}/state")
 
+    async def issue(self, issue_id: str) -> dict[str, Any]:
+        return await self.request("GET", f"/issues/{issue_id}")
+
+    async def resident_confirm(self, issue_id: str, actor_id: str) -> dict[str, Any]:
+        return await self.request("POST", f"/issues/{issue_id}/resident-confirm", json={"actor_id": actor_id})
+
+    async def verify(self, issue_id: str, actor_id: str, result: str) -> dict[str, Any]:
+        return await self.request(
+            "POST",
+            f"/issues/{issue_id}/verify",
+            json={"verifier_type": "resident", "verifier_id": actor_id, "result": result},
+        )
+
+    async def initiative(self, initiative_id: str) -> dict[str, Any]:
+        return await self.request("GET", f"/initiatives/{initiative_id}")
+
+    async def vote(self, initiative_id: str, voter_id: str, option: str) -> dict[str, Any]:
+        return await self.request("POST", f"/initiatives/{initiative_id}/poll", json={"voter_id": voter_id, "option": option})
+
+
+def inline_keyboard(buttons: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    return [{"type": "inline_keyboard", "payload": {"buttons": buttons}}]
+
+
+def issue_keyboard(issue: dict[str, Any], miniapp_url: str, bot_username: str) -> list[dict[str, Any]]:
+    issue_id = str(issue["id"])
+    rows: list[list[dict[str, Any]]] = []
+    if issue.get("state") == "NEEDS_CONFIRMATION":
+        rows.append([{"type": "callback", "text": "У меня тоже", "payload": f"confirm_issue:{issue_id}"}])
+    if issue.get("state") == "DONE_PENDING_VERIFICATION":
+        rows.append(
+            [
+                {"type": "callback", "text": "Исправлено", "payload": f"verify_yes:{issue_id}"},
+                {"type": "callback", "text": "Не исправлено", "payload": f"verify_no:{issue_id}"},
+            ]
+        )
+    rows.append([{"type": "open_app", "text": "Открыть карточку", "web_app": bot_username, "payload": f"issue_{issue_id}"}])
+    if miniapp_url and "localhost" not in miniapp_url:
+        rows.append([{"type": "link", "text": "Открыть в браузере", "url": f"{miniapp_url.rstrip('/')}?issue={issue_id}"}])
+    return inline_keyboard(rows)
+
+
+def initiative_keyboard(initiative: dict[str, Any], bot_username: str) -> list[dict[str, Any]]:
+    rows = [
+        [{"type": "callback", "text": option[:128], "payload": f"vote:{initiative['id']}:{index}"}]
+        for index, option in enumerate(initiative.get("options") or [])
+    ]
+    rows.append([{"type": "open_app", "text": "Открыть инициативу", "web_app": bot_username, "payload": f"initiative_{initiative['id']}"}])
+    return inline_keyboard(rows)
+
+
+def format_initiative(initiative: dict[str, Any]) -> str:
+    votes = initiative.get("votes") or {}
+    options = "\n".join(f"• {option} — {votes.get(option, 0)}" for option in initiative.get("options", []))
+    return (
+        "**Инициатива жителей**\n"
+        f"{initiative.get('title')}\n\n"
+        f"{initiative.get('summary')}\n\n"
+        f"Неформальный опрос:\n{options}\n\n"
+        "Это обсуждение жителей, не юридически значимое ОСС."
+    )
+
 
 def format_result(result: dict[str, Any], miniapp_url: str) -> str:
     if fallback := result.get("fallback"):
@@ -112,14 +200,7 @@ def format_result(result: dict[str, Any], miniapp_url: str) -> str:
             lines.append(f"[Открыть ДомПульс]({miniapp_url})")
         return "\n".join(lines)
     if initiative := result.get("initiative"):
-        options = "\n".join(f"• {option}" for option in initiative.get("options", []))
-        return (
-            "**Инициатива создана**\n"
-            f"{initiative.get('title')}\n\n"
-            f"{initiative.get('summary')}\n\n"
-            f"Неформальный опрос:\n{options}\n\n"
-            "Это обсуждение жителей, не юридически значимое ОСС."
-        )
+        return format_initiative(initiative)
     if result.get("result") == "NO_ACTION":
         return "Я не увидел обращения по дому. Опишите проблему или инициативу чуть подробнее."
     return "Сообщение принято и сохранено."
@@ -137,11 +218,11 @@ def help_text(house_id: str) -> str:
     )
 
 
-async def send_reply(adapter: MaxAdapter, message: IncomingMaxMessage, text: str) -> None:
+async def send_reply(adapter: MaxAdapter, message: IncomingMaxMessage, text: str, attachments: list[dict[str, Any]] | None = None) -> None:
     if message.chat_id:
-        await adapter.send_message(text=text, chat_id=message.chat_id)
+        await adapter.send_message(text=text, chat_id=message.chat_id, attachments=attachments)
     else:
-        await adapter.send_message(text=text, user_id=message.user_id)
+        await adapter.send_message(text=text, user_id=message.user_id, attachments=attachments)
 
 
 async def handle_message(
@@ -150,6 +231,7 @@ async def handle_message(
     state: PollState,
     message: IncomingMaxMessage,
     miniapp_url: str,
+    bot_username: str,
 ) -> None:
     command = message.text.split(maxsplit=1)[0].lower()
     if command in HOUSE_COMMANDS:
@@ -177,7 +259,100 @@ async def handle_message(
         )
         return
     result = await api.process_message(message, house_id)
-    await send_reply(adapter, message, format_result(result, miniapp_url))
+    attachments = None
+    if issue := result.get("issue"):
+        state.watch_issue(message, issue)
+        attachments = issue_keyboard(issue, miniapp_url, bot_username)
+    elif initiative := result.get("initiative"):
+        attachments = initiative_keyboard(initiative, bot_username)
+    await send_reply(adapter, message, format_result(result, miniapp_url), attachments)
+
+
+async def handle_callback(
+    adapter: MaxAdapter,
+    api: DomPulsApi,
+    callback: IncomingMaxCallback,
+    miniapp_url: str,
+    bot_username: str,
+    state: PollState | None = None,
+) -> None:
+    action, separator, value = callback.payload.partition(":")
+    if not separator:
+        await adapter.answer_callback(callback.callback_id, notification="Неизвестное действие")
+        return
+    if action == "confirm_issue":
+        result = await api.resident_confirm(value, callback.user_id)
+        issue = result["issue"]
+        if state:
+            state.watch_callback(callback, issue)
+        notification = "Вы уже подтверждали эту проблему" if result.get("idempotent_replay") else "Подтверждение учтено"
+        await adapter.answer_callback(
+            callback.callback_id,
+            notification=notification,
+            message={"text": format_result({"issue": issue, "clustered": True}, miniapp_url), "format": "markdown", "attachments": issue_keyboard(issue, miniapp_url, bot_username)},
+        )
+        return
+    if action == "vote":
+        initiative_id, option_separator, option_index = value.rpartition(":")
+        if not option_separator or not option_index.isdigit():
+            await adapter.answer_callback(callback.callback_id, notification="Некорректный вариант")
+            return
+        initiative = await api.initiative(initiative_id)
+        options = initiative.get("options") or []
+        index = int(option_index)
+        if index >= len(options):
+            await adapter.answer_callback(callback.callback_id, notification="Вариант больше недоступен")
+            return
+        updated = await api.vote(initiative_id, callback.user_id, options[index])
+        await adapter.answer_callback(
+            callback.callback_id,
+            notification="Голос учтён",
+            message={"text": format_initiative(updated), "format": "markdown", "attachments": initiative_keyboard(updated, bot_username)},
+        )
+        return
+    if action in {"verify_yes", "verify_no"}:
+        result = "confirmed" if action == "verify_yes" else "rejected"
+        issue = await api.verify(value, callback.user_id, result)
+        notification = "Спасибо, результат подтверждён" if result == "confirmed" else "Проблема переоткрыта"
+        await adapter.answer_callback(
+            callback.callback_id,
+            notification=notification,
+            message={"text": format_result({"issue": issue}, miniapp_url), "format": "markdown", "attachments": issue_keyboard(issue, miniapp_url, bot_username)},
+        )
+        return
+    await adapter.answer_callback(callback.callback_id, notification="Неизвестное действие")
+
+
+async def notify_state_changes(
+    adapter: MaxAdapter,
+    api: DomPulsApi,
+    state: PollState,
+    miniapp_url: str,
+    bot_username: str,
+) -> None:
+    changed = False
+    for issue_id, conversations in list(state.watchers.items()):
+        try:
+            issue = await api.issue(issue_id)
+        except httpx.HTTPError:
+            continue
+        current_state = str(issue.get("state"))
+        for watcher in conversations.values():
+            previous_state = watcher.get("last_state")
+            if previous_state == current_state:
+                continue
+            if previous_state:
+                text = f"**Статус проблемы изменился**\n{issue.get('title')}\n{previous_state} → {current_state}"
+                await adapter.send_message(
+                    text=text,
+                    chat_id=watcher.get("chat_id"),
+                    user_id=None if watcher.get("chat_id") else watcher.get("user_id"),
+                    attachments=issue_keyboard(issue, miniapp_url, bot_username),
+                )
+            watcher["last_state"] = current_state
+            changed = True
+    if changed:
+        state.save()
 
 
 async def run() -> None:
@@ -192,7 +367,8 @@ async def run() -> None:
     subscriptions = await adapter.get_subscriptions()
     if subscriptions:
         raise MaxAdapterError("Long polling is unavailable while a MAX webhook subscription exists")
-    LOGGER.info("Connected to MAX as @%s (%s)", bot.get("username", "unknown"), bot.get("user_id", "unknown"))
+    bot_username = str(bot.get("username") or "")
+    LOGGER.info("Connected to MAX as @%s (%s)", bot_username or "unknown", bot.get("user_id", "unknown"))
     state = PollState(settings.max_poll_state_path, settings.max_default_house_id)
     api = DomPulsApi(settings.dompuls_api_url)
     failures = 0
@@ -201,14 +377,27 @@ async def run() -> None:
             page = await adapter.get_updates(
                 marker=state.marker,
                 timeout=settings.max_poll_timeout,
-                update_types=["message_created", "bot_started"],
+                update_types=["message_created", "message_callback", "bot_started"],
             )
             for update in page.get("updates") or []:
+                callback = parse_incoming_callback(update)
+                if callback:
+                    try:
+                        await handle_callback(adapter, api, callback, settings.max_miniapp_url, bot_username, state)
+                    except httpx.HTTPStatusError as exc:
+                        detail = "Действие уже выполнено или больше недоступно"
+                        try:
+                            detail = exc.response.json().get("detail") or detail
+                        except (ValueError, AttributeError):
+                            pass
+                        await adapter.answer_callback(callback.callback_id, notification=detail[:200])
+                    continue
                 message = parse_incoming_message(update)
                 if message and not message.sender_is_bot:
-                    await handle_message(adapter, api, state, message, settings.max_miniapp_url)
+                    await handle_message(adapter, api, state, message, settings.max_miniapp_url, bot_username)
             if page.get("marker") is not None:
                 state.set_marker(page["marker"])
+            await notify_state_changes(adapter, api, state, settings.max_miniapp_url, bot_username)
             failures = 0
         except (MaxAdapterError, httpx.HTTPError, OSError, KeyError) as exc:
             failures += 1

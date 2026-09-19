@@ -67,3 +67,25 @@ def test_max_webhook_is_idempotent(client):
     second = client.post("/integrations/max/webhook", json=update)
     assert first.status_code == 200
     assert second.json()["idempotent_replay"] is True
+
+
+def test_resident_confirmation_is_per_user_idempotent(client):
+    path = "/issues/demo-current-elevator-issue/resident-confirm"
+    first = client.post(path, json={"actor_id": "max-user-42"})
+    second = client.post(path, json={"actor_id": "max-user-42"})
+    assert first.status_code == 200
+    assert first.json()["idempotent_replay"] is False
+    assert first.json()["issue"]["confirmations_count"] == 6
+    assert second.status_code == 200
+    assert second.json()["idempotent_replay"] is True
+    assert second.json()["issue"]["confirmations_count"] == 6
+
+
+def test_initiative_same_vote_is_idempotent(client):
+    path = "/initiatives/seed-parking-light-initiative/poll"
+    vote = {"voter_id": "max-user-42", "option": "У въезда"}
+    first = client.post(path, json=vote)
+    second = client.post(path, json=vote)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["votes"]["У въезда"] == first.json()["votes"]["У въезда"]

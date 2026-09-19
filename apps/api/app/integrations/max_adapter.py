@@ -18,7 +18,23 @@ class MaxAdapter(ABC):
     async def get_bot(self) -> dict[str, Any]: ...
 
     @abstractmethod
-    async def send_message(self, *, text: str, chat_id: str | None = None, user_id: str | None = None) -> dict[str, Any]: ...
+    async def send_message(
+        self,
+        *,
+        text: str,
+        chat_id: str | None = None,
+        user_id: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]: ...
+
+    @abstractmethod
+    async def answer_callback(
+        self,
+        callback_id: str,
+        *,
+        notification: str | None = None,
+        message: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
 
     @abstractmethod
     async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]: ...
@@ -43,8 +59,24 @@ class MockMaxAdapter(MaxAdapter):
     async def get_bot(self) -> dict[str, Any]:
         return {"is_bot": True, "first_name": "ДомПульс Demo", "username": "dompuls_demo_bot", "simulated": True}
 
-    async def send_message(self, *, text: str, chat_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
-        return {"delivered": True, "simulated": True, "chat_id": chat_id, "user_id": user_id, "text": text}
+    async def send_message(
+        self,
+        *,
+        text: str,
+        chat_id: str | None = None,
+        user_id: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return {"delivered": True, "simulated": True, "chat_id": chat_id, "user_id": user_id, "text": text, "attachments": attachments or []}
+
+    async def answer_callback(
+        self,
+        callback_id: str,
+        *,
+        notification: str | None = None,
+        message: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {"success": True, "simulated": True, "callback_id": callback_id, "notification": notification, "message": message}
 
     async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]:
         return {"chat_id": chat_id, "permissions": [], "has_read_all_messages": False, "simulated": True}
@@ -93,11 +125,35 @@ class RealMaxAdapter(MaxAdapter):
     async def get_bot(self) -> dict[str, Any]:
         return await self._request("GET", "/me")
 
-    async def send_message(self, *, text: str, chat_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
+    async def send_message(
+        self,
+        *,
+        text: str,
+        chat_id: str | None = None,
+        user_id: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         if not chat_id and not user_id:
             raise MaxAdapterError("chat_id or user_id is required")
         params = {"chat_id": chat_id} if chat_id else {"user_id": user_id}
-        return await self._request("POST", "/messages", params=params, json={"text": text, "format": "markdown"})
+        body: dict[str, Any] = {"text": text, "format": "markdown"}
+        if attachments:
+            body["attachments"] = attachments
+        return await self._request("POST", "/messages", params=params, json=body)
+
+    async def answer_callback(
+        self,
+        callback_id: str,
+        *,
+        notification: str | None = None,
+        message: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if notification:
+            body["notification"] = notification
+        if message:
+            body["message"] = message
+        return await self._request("POST", "/answers", params={"callback_id": callback_id}, json=body)
 
     async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]:
         member = await self._request("GET", f"/chats/{chat_id}/members/me")

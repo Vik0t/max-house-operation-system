@@ -42,6 +42,10 @@ class ConfirmRequest(BaseModel):
     actor_id: str = "resident-demo"
 
 
+class ResidentConfirmRequest(BaseModel):
+    actor_id: str = Field(default="resident-demo", min_length=1, max_length=100)
+
+
 class SubmitRequest(BaseModel):
     actor_id: str = "representative-demo"
 

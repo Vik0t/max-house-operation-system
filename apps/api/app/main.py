@@ -51,6 +51,7 @@ from .schemas import (
     ManualResolveRequest,
     MaxInitDataRequest,
     PollRequest,
+    ResidentConfirmRequest,
     SignalCreate,
     SubmitRequest,
     VerifyRequest,
@@ -396,6 +397,29 @@ def confirm_issue(issue_id: str, payload: ConfirmRequest, db: Session = Depends(
     return issue_dict(issue, detailed=True)
 
 
+@app.post("/issues/{issue_id}/resident-confirm")
+def resident_confirm_issue(issue_id: str, payload: ResidentConfirmRequest, db: Session = Depends(get_db)):
+    issue = get_issue(db, issue_id)
+    allowed = {IssueState.NEEDS_CONFIRMATION.value, IssueState.CONFIRMED.value, IssueState.ACTION_READY.value}
+    if issue.state not in allowed:
+        raise HTTPException(status_code=409, detail="Issue no longer accepts resident confirmations")
+    existing = db.scalar(
+        select(AuditEvent).where(
+            AuditEvent.entity_type == "Issue",
+            AuditEvent.entity_id == issue.id,
+            AuditEvent.event_type == "RESIDENT_CONFIRMED",
+            AuditEvent.actor_id == payload.actor_id,
+        )
+    )
+    if existing:
+        return {"issue": issue_dict(issue, detailed=True), "idempotent_replay": True}
+    issue.confirmations_count += 1
+    issue.last_seen_at = datetime.now(timezone.utc)
+    audit(db, "Issue", issue.id, "RESIDENT_CONFIRMED", payload.actor_id)
+    commit(db)
+    return {"issue": issue_dict(issue, detailed=True), "idempotent_replay": False}
+
+
 @app.post("/issues/{issue_id}/submit")
 def submit_issue(issue_id: str, payload: SubmitRequest, db: Session = Depends(get_db)):
     issue = get_issue(db, issue_id)
@@ -533,6 +557,13 @@ def vote(initiative_id: str, payload: PollRequest, db: Session = Depends(get_db)
         raise HTTPException(status_code=409, detail="Poll is not open")
     if payload.option not in initiative.options:
         raise HTTPException(status_code=422, detail="Unknown poll option")
+    existing = db.scalar(
+        select(PollVote).where(PollVote.initiative_id == initiative.id, PollVote.voter_id == payload.voter_id)
+    )
+    if existing:
+        if existing.option != payload.option:
+            raise HTTPException(status_code=409, detail="Vote has already been cast for another option")
+        return initiative_dict(initiative)
     db.add(PollVote(initiative_id=initiative.id, **payload.model_dump()))
     votes = dict(initiative.votes)
     votes[payload.option] = votes.get(payload.option, 0) + 1

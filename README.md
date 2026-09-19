@@ -52,7 +52,7 @@ MAX_BOT_TOKEN=...
 MAX_CA_BUNDLE=/app/certs/russian-trusted-ca.pem
 ```
 
-Compose запустит отдельный `bot` worker. Он читает `GET /updates` через Long Polling, отправляет сообщения в существующий Signal/Issue pipeline и отвечает в MAX. `MAX_CA_BUNDLE` содержит официальную цепочку Russian Trusted Root/Sub CA; TLS verification не отключается. Подробности: [docs/max_setup.md](docs/max_setup.md).
+Compose запустит отдельный `bot` worker. Он читает `GET /updates` через Long Polling, отправляет сообщения в существующий Signal/Issue pipeline и отвечает в MAX. Ответы содержат настоящую inline-клавиатуру: resident confirmation, `open_app`, голосование инициативы и проверку результата. Чат подписывается на созданный Issue и получает уведомления о смене состояния. `MAX_CA_BUNDLE` содержит официальную цепочку Russian Trusted Root/Sub CA; TLS verification не отключается. Подробности: [docs/max_setup.md](docs/max_setup.md).
 
 Проверка:
 
@@ -114,7 +114,7 @@ Suite покрывает:
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон: `28 passed`; production React build и live browser verification также проходят. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон: `36 passed`; production React build и live browser verification также проходят. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 
@@ -132,7 +132,7 @@ Suite покрывает:
 
 | Интеграция | Статус |
 |---|---|
-| MAX Bot API | REAL: production Long Polling worker получает сообщения и отвечает как `@t312_hakaton_max_bot`; webhook path также готов |
+| MAX Bot API | REAL: production worker получает сообщения и callbacks, отправляет inline keyboard/open_app/status notifications и отвечает как `@t312_hakaton_max_bot`; webhook path также готов |
 | MAX Bridge / launch context | REAL adapter: официальный Bridge загружается в mini-app, подписанный `initData` проверяется backend HMAC и TTL |
 | Локальный direct input | REAL local input path |
 | AI pipeline | REAL deterministic structured pipeline; внешний LLM не требуется |

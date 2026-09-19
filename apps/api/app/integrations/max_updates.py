@@ -18,6 +18,39 @@ class IncomingMaxMessage:
         return f"chat:{self.chat_id}" if self.chat_id else f"user:{self.user_id}"
 
 
+@dataclass(frozen=True)
+class IncomingMaxCallback:
+    callback_id: str
+    payload: str
+    user_id: str
+    chat_id: str | None
+
+    @property
+    def conversation_key(self) -> str:
+        return f"chat:{self.chat_id}" if self.chat_id else f"user:{self.user_id}"
+
+
+def parse_incoming_callback(update: dict[str, Any]) -> IncomingMaxCallback | None:
+    if update.get("update_type") != "message_callback":
+        return None
+    callback = update.get("callback") or {}
+    message = update.get("message") or {}
+    recipient = message.get("recipient") or {}
+    user = callback.get("user") or {}
+    callback_id = callback.get("callback_id")
+    payload = callback.get("payload")
+    user_id = user.get("user_id")
+    if callback_id is None or payload is None or user_id is None:
+        return None
+    chat_id = recipient.get("chat_id") or update.get("chat_id")
+    return IncomingMaxCallback(
+        callback_id=str(callback_id),
+        payload=str(payload),
+        user_id=str(user_id),
+        chat_id=str(chat_id) if chat_id is not None else None,
+    )
+
+
 def parse_incoming_message(update: dict[str, Any]) -> IncomingMaxMessage | None:
     if update.get("update_type") != "message_created":
         return None
