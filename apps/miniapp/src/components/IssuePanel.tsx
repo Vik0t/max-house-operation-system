@@ -40,6 +40,19 @@ export function IssuePanel({ issue, busy, onAction, onClose, onShare }: Props) {
           <div><strong>{evidenceCount}</strong><span>evidence из сообщений</span></div>
         </div>
         {issue.recurrence_count >= 3 ? <div className="insight">↻ Повторяющаяся проблема: {issue.recurrence_count} события за 90 дней</div> : null}
+        {issue.signals?.length ? (
+          <section className="detail-block">
+            <p className="eyebrow">Исходные сообщения</p>
+            <div className="source-signals">
+              {issue.signals.map((signal) => (
+                <div key={signal.id}>
+                  <span>{signal.source_type === 'max_message' ? 'MAX' : 'WEB'} · житель</span>
+                  <strong>{signal.text}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
         {issue.actions?.at(-1) ? (
           <section className="detail-block">
             <p className="eyebrow">Рекомендованное действие</p>

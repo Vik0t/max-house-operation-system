@@ -1,7 +1,9 @@
 import hashlib
 import hmac
+import json
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
@@ -33,6 +35,7 @@ from .models import (
     House,
     Initiative,
     Issue,
+    IssueSignal,
     PollVote,
     Signal,
     Submission,
@@ -116,6 +119,19 @@ async def max_status():
     try:
         bot = await max_adapter.get_bot()
         polling_active = polling_is_active(settings.max_poll_state_path, settings.max_poll_timeout) if max_adapter.mode == "REAL" else False
+        groups = []
+        try:
+            poll_state = json.loads(Path(settings.max_poll_state_path).read_text())
+            groups = [
+                {
+                    "house_id": group.get("house_id"),
+                    "last_seen_at": group.get("last_seen_at"),
+                    "has_read_all_messages": group.get("has_read_all_messages"),
+                }
+                for group in (poll_state.get("conversations") or {}).values()
+            ]
+        except (OSError, ValueError, TypeError):
+            pass
         return {
             "mode": max_adapter.mode,
             "connected": polling_active if max_adapter.mode == "REAL" else True,
@@ -123,6 +139,7 @@ async def max_status():
             "transport": "LONG_POLLING" if max_adapter.mode == "REAL" else "SIMULATED",
             "polling_active": polling_active,
             "bot": bot,
+            "groups": groups,
         }
     except MaxAdapterError as exc:
         return {"mode": max_adapter.mode, "connected": False, "api_connected": False, "polling_active": False, "error": str(exc)}
@@ -190,6 +207,23 @@ def house_state(house_id: str, db: Session = Depends(get_db)):
     assets = db.scalars(select(Asset).where(Asset.house_id == house_id)).all()
     initiatives = db.scalars(select(Initiative).where(Initiative.house_id == house_id, Initiative.state != InitiativeState.CLOSED.value)).all()
     threshold = get_house_config(house_id).recurrence.count
+    recent_signals = db.scalars(
+        select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(12)
+    ).all()
+    signal_feed = []
+    for item in recent_signals:
+        linked_issue = db.scalar(select(Issue).join(Issue.signals).where(Signal.id == item.id))
+        signal_feed.append(
+            {
+                **signal_dict(item),
+                "status": "CLUSTERED" if linked_issue else "AWAITING_CONTEXT",
+                "issue": (
+                    {"id": linked_issue.id, "title": linked_issue.title, "state": linked_issue.state}
+                    if linked_issue
+                    else None
+                ),
+            }
+        )
     return {
         "house": house_dict(house),
         "metrics": {
@@ -201,8 +235,82 @@ def house_state(house_id: str, db: Session = Depends(get_db)):
         "assets": [asset_dict(item, operational_state(db, item)) for item in assets],
         "issues": [issue_dict(item) for item in sorted(issues, key=lambda item: item.last_seen_at, reverse=True)[:20]],
         "initiatives": [initiative_dict(item) for item in initiatives],
+        "recent_signals": signal_feed,
         "integration": {"max": max_adapter.mode, "external_submission": "SIMULATED"},
     }
+
+
+def recent_unlinked_context(db: Session, signal: Signal) -> list[Signal]:
+    """Return a small, ordered conversation window that is still awaiting classification."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+    query = (
+        select(Signal)
+        .outerjoin(IssueSignal, IssueSignal.signal_id == Signal.id)
+        .where(
+            Signal.house_id == signal.house_id,
+            Signal.id != signal.id,
+            Signal.created_at >= cutoff,
+            IssueSignal.issue_id.is_(None),
+        )
+        .order_by(Signal.created_at.desc())
+        .limit(4)
+    )
+    if signal.chat_id:
+        query = query.where(Signal.chat_id == signal.chat_id)
+    else:
+        query = query.where(Signal.chat_id.is_(None), Signal.author_id == signal.author_id)
+    return list(reversed(db.scalars(query).all()))
+
+
+def contextual_extraction(db: Session, signal: Signal, extraction):
+    """Resolve split group-chat phrases without letting unrelated chatter drive state."""
+    if extraction.intent not in {"noise", "issue"}:
+        return extraction, [signal], signal.text
+    if extraction.intent == "issue" and "zone" not in extraction.missing_fields:
+        return extraction, [signal], signal.text
+    for pending in reversed(recent_unlinked_context(db, signal)):
+        try:
+            pending_extraction = extract_structured(pending.text)
+        except AIPipelineUnavailable:
+            continue
+        if pending_extraction.intent != "issue" or not pending_extraction.actionable:
+            continue
+        combined_text = f"{pending.text}\n{signal.text}"
+        combined = extract_structured(combined_text)
+        if combined.intent == "issue" and combined.actionable and "zone" not in combined.missing_fields:
+            return combined, [pending, signal], combined_text
+    return extraction, [signal], signal.text
+
+
+def attach_signals(issue: Issue, signals: list[Signal]) -> int:
+    existing_ids = {item.id for item in issue.signals}
+    existing_authors = {item.author_id for item in issue.signals}
+    added = [item for item in signals if item.id not in existing_ids]
+    issue.signals.extend(added)
+    return len({item.author_id for item in added if item.author_id not in existing_authors})
+
+
+def recent_conversation_issue(db: Session, signal: Signal) -> Issue | None:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    active_states = [
+        IssueState.NEEDS_CONFIRMATION.value,
+        IssueState.CONFIRMED.value,
+        IssueState.ACTION_READY.value,
+        IssueState.SUBMITTED.value,
+        IssueState.ACCEPTED.value,
+        IssueState.WORK_IN_PROGRESS.value,
+    ]
+    query = (
+        select(Issue)
+        .join(Issue.signals)
+        .where(Issue.house_id == signal.house_id, Issue.state.in_(active_states), Issue.last_seen_at >= cutoff)
+        .order_by(Issue.last_seen_at.desc())
+    )
+    if signal.chat_id:
+        query = query.where(Signal.chat_id == signal.chat_id)
+    else:
+        query = query.where(Signal.chat_id.is_(None), Signal.author_id == signal.author_id)
+    return db.scalar(query.limit(1))
 
 
 def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
@@ -215,6 +323,7 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
             return {"signal": signal_dict(existing), "issue": issue_dict(linked_issue) if linked_issue else None, "idempotent_replay": True}
     signal = Signal(**payload.model_dump(exclude={"manual_category", "manual_zone_id", "force_ai_failure"}))
     db.add(signal)
+    db.flush()
     try:
         extraction = extract_structured(payload.text, force_failure=payload.force_ai_failure)
     except AIPipelineUnavailable:
@@ -225,7 +334,31 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
             "fallback": {"type": "MANUAL_CLASSIFICATION", "message": "Не удалось автоматически разобрать сообщение. Выберите категорию и место."},
         }
     signal.ai_actionability_score = extraction.confidence
+    extraction, context_signals, context_text = contextual_extraction(db, signal, extraction)
+    signal.ai_actionability_score = extraction.confidence
     if not extraction.actionable or extraction.intent == "noise":
+        lowered = payload.text.lower()
+        followup_markers = ("у меня тоже", "подтвержда", "вчера", "снова", "опять", "не работ")
+        conversation_issue = recent_conversation_issue(db, signal) if any(marker in lowered for marker in followup_markers) else None
+        if conversation_issue:
+            conversation_issue.confirmations_count += attach_signals(conversation_issue, [signal])
+            conversation_issue.last_seen_at = datetime.now(timezone.utc)
+            audit(
+                db,
+                "Issue",
+                conversation_issue.id,
+                "CONVERSATION_FOLLOWUP_CLUSTERED",
+                payload.author_id,
+                details={"signal_id": signal.id, "chat_id": signal.chat_id},
+            )
+            commit(db)
+            return {
+                "signal": signal_dict(signal),
+                "classification": extraction.model_dump(),
+                "issue": issue_dict(conversation_issue),
+                "clustered": True,
+                "contextual_followup": True,
+            }
         commit(db)
         return {"signal": signal_dict(signal), "classification": extraction.model_dump(), "result": "NO_ACTION"}
     resolution = resolve_zone_asset(db, payload.house_id, extraction)
@@ -239,8 +372,7 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
             text=payload.text,
         )
         if candidate and score >= 0.65:
-            candidate.signals.append(signal)
-            candidate.confirmations_count += 1
+            candidate.confirmations_count += attach_signals(candidate, context_signals)
             candidate.last_seen_at = datetime.now(timezone.utc)
             audit(db, "Issue", candidate.id, "SIGNAL_CLUSTERED", payload.author_id, details={"score": score})
             commit(db)
@@ -254,8 +386,7 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
             .order_by(Issue.last_seen_at.desc())
         )
         if candidate:
-            candidate.signals.append(signal)
-            candidate.confirmations_count += 1
+            candidate.confirmations_count += attach_signals(candidate, context_signals)
             candidate.last_seen_at = datetime.now(timezone.utc)
             audit(db, "Issue", candidate.id, "CONFIRMATION_CLUSTERED", payload.author_id, details={"rule": "latest_active_issue"})
             commit(db)
@@ -288,12 +419,18 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
         }
     zone_id = payload.manual_zone_id or (resolution.zone.id if resolution.zone else None)
     asset_id = resolution.asset.id if resolution.asset else None
-    candidate, score = find_duplicate(db, house_id=payload.house_id, zone_id=zone_id, asset_id=asset_id, category=extraction.category, text=payload.text)
+    candidate, score = find_duplicate(db, house_id=payload.house_id, zone_id=zone_id, asset_id=asset_id, category=extraction.category, text=context_text)
     if candidate and score >= 0.78:
-        candidate.signals.append(signal)
-        candidate.confirmations_count += 1
+        candidate.confirmations_count += attach_signals(candidate, context_signals)
         candidate.last_seen_at = datetime.now(timezone.utc)
-        audit(db, "Issue", candidate.id, "SIGNAL_CLUSTERED", payload.author_id, details={"score": score})
+        audit(
+            db,
+            "Issue",
+            candidate.id,
+            "SIGNAL_CLUSTERED",
+            payload.author_id,
+            details={"score": score, "signal_ids": [item.id for item in context_signals], "contextual": len(context_signals) > 1},
+        )
         commit(db)
         return {"signal": signal_dict(signal), "classification": extraction.model_dump(), "issue": issue_dict(candidate), "clustered": True, "duplicate_score": score}
     if candidate and score >= 0.55:
@@ -313,10 +450,11 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
         category=category,
         symptom=extraction.symptom,
         title=title,
-        description=payload.text,
+        description=context_text,
         severity="high" if extraction.recurrence_hint or count > 1 else "medium",
         recurrence_count=count,
-        signals=[signal],
+        signals=context_signals,
+        confirmations_count=max(1, len({item.author_id for item in context_signals})),
     )
     db.add(issue)
     db.flush()

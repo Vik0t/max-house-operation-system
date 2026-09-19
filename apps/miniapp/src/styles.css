@@ -68,6 +68,21 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; padding: 42px 0 10
 .status--positive { background: #d9eee5; color: #1c6a52; }
 .status--danger { background: #f9dfd5; color: #a14423; }
 .issue-list { display: flex; flex-direction: column; }
+.live-indicator { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 11px; font-weight: 800; }
+.live-indicator i { width: 8px; height: 8px; border-radius: 50%; background: #23a878; box-shadow: 0 0 0 4px rgba(35,168,120,.13); }
+.signal-feed { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.signal-message { appearance: none; display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: white; color: var(--ink); text-align: left; }
+button.signal-message:hover { border-color: #91aa9c; transform: translateY(-1px); }
+.signal-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.signal-meta b { color: #625185; }
+.signal-message > strong { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.signal-message > small { font-size: 10px; }
+.signal-linked { color: var(--green); }
+.signal-waiting { color: #9a6426; }
+.source-signals { display: grid; gap: 8px; }
+.source-signals > div { display: flex; flex-direction: column; gap: 5px; padding: 12px; border-radius: 11px; background: #edf2ee; }
+.source-signals span { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.source-signals strong { font-size: 12px; }
 .issue-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 2px; border-width: 0 0 1px; }
 .issue-row:last-child { border-bottom: 0; }
 .empty { text-align: center; color: var(--muted); padding: 28px; }
@@ -120,6 +135,7 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; padding: 42px 0 10
   .metrics { grid-template-columns: 1fr 1fr; }
   .metric { min-height: 105px; }
   .asset-grid { grid-template-columns: 1fr; }
+  .signal-feed { grid-template-columns: 1fr; }
   .asset-card { grid-template-columns: 38px 1fr; }
   .asset-card .status { grid-column: 2; }
   .drawer { padding: 38px 22px; }

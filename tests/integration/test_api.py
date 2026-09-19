@@ -21,6 +21,77 @@ def test_signal_clusters_by_house_zone_asset(client):
     assert other.json()["issue"]["id"] != body["issue"]["id"]
 
 
+def test_split_group_messages_build_one_contextual_issue(client):
+    first = client.post(
+        "/signals",
+        json={
+            "house_id": "demo-house-b",
+            "chat_id": "group-101",
+            "author_id": "resident-1",
+            "external_id": "group-101-1",
+            "source_type": "max_message",
+            "text": "лифт опять встал",
+        },
+    )
+    assert first.status_code == 201
+    assert first.json()["fallback"]["type"] == "ZONE_CLARIFICATION"
+    assert first.json().get("issue") is None
+
+    second = client.post(
+        "/signals",
+        json={
+            "house_id": "demo-house-b",
+            "chat_id": "group-101",
+            "author_id": "resident-2",
+            "external_id": "group-101-2",
+            "source_type": "max_message",
+            "text": "первый подъезд",
+        },
+    )
+    assert second.status_code == 201
+    issue = second.json()["issue"]
+    assert issue["asset_id"] == "house-b-elevator-1"
+    assert issue["confirmations_count"] == 2
+
+    third = client.post(
+        "/signals",
+        json={
+            "house_id": "demo-house-b",
+            "chat_id": "group-101",
+            "author_id": "resident-3",
+            "external_id": "group-101-3",
+            "source_type": "max_message",
+            "text": "у меня тоже",
+        },
+    ).json()
+    fourth = client.post(
+        "/signals",
+        json={
+            "house_id": "demo-house-b",
+            "chat_id": "group-101",
+            "author_id": "resident-4",
+            "external_id": "group-101-4",
+            "source_type": "max_message",
+            "text": "вчера уже не работал",
+        },
+    ).json()
+    assert third["issue"]["id"] == issue["id"]
+    assert fourth["issue"]["id"] == issue["id"]
+    assert fourth["contextual_followup"] is True
+    assert fourth["issue"]["confirmations_count"] == 4
+
+    detailed = client.get(f"/issues/{issue['id']}").json()
+    assert [item["text"] for item in detailed["signals"]] == [
+        "лифт опять встал",
+        "первый подъезд",
+        "у меня тоже",
+        "вчера уже не работал",
+    ]
+    state = client.get("/houses/demo-house-b/state").json()
+    linked = [item for item in state["recent_signals"] if item["issue"] and item["issue"]["id"] == issue["id"]]
+    assert len(linked) == 4
+
+
 def test_ai_timeout_returns_manual_fallback(client):
     response = client.post("/signals", json={"house_id": "demo-house-a", "text": "сломался свет", "force_ai_failure": True})
     assert response.status_code == 201

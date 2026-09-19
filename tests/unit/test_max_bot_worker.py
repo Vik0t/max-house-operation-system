@@ -65,6 +65,17 @@ def test_poll_state_persists_issue_watchers(tmp_path):
     assert restored.watchers["issue-1"]["chat:77"]["last_state"] == "NEEDS_CONFIRMATION"
 
 
+def test_poll_state_registers_group_permissions(tmp_path):
+    path = tmp_path / "bot-state.json"
+    message = parse_incoming_message(sample_update())
+    state = PollState(str(path), "demo-house-a")
+    state.remember_conversation(message, {"permissions": ["read_all_messages"], "has_read_all_messages": True})
+    restored = PollState(str(path), "demo-house-a")
+    group = restored.conversations["chat:77"]
+    assert group["chat_id"] == "77"
+    assert group["has_read_all_messages"] is True
+
+
 def test_bot_response_exposes_real_domain_result():
     response = format_result(
         {

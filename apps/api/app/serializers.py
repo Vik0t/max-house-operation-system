@@ -32,6 +32,7 @@ def signal_dict(signal: Signal):
     return {
         "id": signal.id,
         "house_id": signal.house_id,
+        "chat_id": signal.chat_id,
         "author_id": signal.author_id,
         "source_type": signal.source_type,
         "text": signal.text,
@@ -126,7 +127,7 @@ def issue_dict(issue: Issue, *, detailed: bool = False):
     }
     if detailed:
         data.update(
-            signals=[signal_dict(item) for item in issue.signals],
+            signals=[signal_dict(item) for item in sorted(issue.signals, key=lambda signal: signal.created_at)],
             actions=[action_dict(item) for item in issue.actions],
             submissions=[submission_dict(item) for item in issue.submissions],
             work_orders=[work_order_dict(item) for item in issue.work_orders],
@@ -163,4 +164,3 @@ def audit_dict(event: AuditEvent):
         "details": event.details,
         "created_at": event.created_at,
     }
-

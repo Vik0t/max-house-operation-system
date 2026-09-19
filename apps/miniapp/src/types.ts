@@ -56,7 +56,20 @@ export type Issue = {
   actions?: Action[]
   submissions?: { id: string; is_simulated: boolean; destination_id: string }[]
   work_orders?: WorkOrder[]
-  signals?: { id: string; attachments: Array<Record<string, unknown>> }[]
+  signals?: Signal[]
+}
+
+export type Signal = {
+  id: string
+  chat_id: string | null
+  author_id: string
+  source_type: string
+  text: string
+  attachments: Array<Record<string, unknown>>
+  provenance: string
+  created_at: string
+  status?: 'CLUSTERED' | 'AWAITING_CONTEXT'
+  issue?: { id: string; title: string; state: string } | null
 }
 
 export type Initiative = {
@@ -82,6 +95,7 @@ export type HouseState = {
   assets: Asset[]
   issues: Issue[]
   initiatives: Initiative[]
+  recent_signals: Signal[]
   integration: { max: string; external_submission: string }
 }
 

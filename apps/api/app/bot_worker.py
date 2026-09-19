@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ class PollState:
         self.marker: int | None = None
         self.houses: dict[str, str] = {}
         self.watchers: dict[str, dict[str, dict[str, str | None]]] = {}
+        self.conversations: dict[str, dict[str, Any]] = {}
         self.default_house_id = default_house_id
         self.load()
 
@@ -30,10 +32,12 @@ class PollState:
             self.marker = raw.get("marker")
             self.houses = raw.get("houses") or {}
             self.watchers = raw.get("watchers") or {}
+            self.conversations = raw.get("conversations") or {}
         except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
             self.marker = None
             self.houses = {}
             self.watchers = {}
+            self.conversations = {}
 
     def house_for(self, message: IncomingMaxMessage) -> str:
         return self.houses.get(message.conversation_key, self.default_house_id)
@@ -44,6 +48,23 @@ class PollState:
 
     def set_marker(self, marker: int | None) -> None:
         self.marker = marker
+        self.save()
+
+    def remember_conversation(self, message: IncomingMaxMessage, permissions: dict[str, Any] | None = None) -> None:
+        if not message.chat_id:
+            return
+        current = self.conversations.get(message.conversation_key, {})
+        current.update(
+            {
+                "chat_id": message.chat_id,
+                "house_id": self.house_for(message),
+                "last_seen_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        if permissions is not None:
+            current["permissions"] = permissions.get("permissions") or []
+            current["has_read_all_messages"] = bool(permissions.get("has_read_all_messages"))
+        self.conversations[message.conversation_key] = current
         self.save()
 
     def watch_issue(self, message: IncomingMaxMessage, issue: dict[str, Any]) -> None:
@@ -72,7 +93,17 @@ class PollState:
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"marker": self.marker, "houses": self.houses, "watchers": self.watchers}, ensure_ascii=False))
+        temporary.write_text(
+            json.dumps(
+                {
+                    "marker": self.marker,
+                    "houses": self.houses,
+                    "watchers": self.watchers,
+                    "conversations": self.conversations,
+                },
+                ensure_ascii=False,
+            )
+        )
         temporary.replace(self.path)
 
 
@@ -233,6 +264,20 @@ async def handle_message(
     miniapp_url: str,
     bot_username: str,
 ) -> None:
+    if message.chat_id:
+        known = state.conversations.get(message.conversation_key)
+        permissions = None
+        if not known or "has_read_all_messages" not in known:
+            try:
+                permissions = await adapter.check_chat_permissions(message.chat_id)
+                LOGGER.info(
+                    "Registered MAX group chat %s; read_all_messages=%s",
+                    message.chat_id,
+                    permissions.get("has_read_all_messages"),
+                )
+            except MaxAdapterError as exc:
+                LOGGER.warning("Could not check permissions for chat %s: %s", message.chat_id, exc)
+        state.remember_conversation(message, permissions)
     command = message.text.split(maxsplit=1)[0].lower()
     if command in HOUSE_COMMANDS:
         house_id = HOUSE_COMMANDS[command]

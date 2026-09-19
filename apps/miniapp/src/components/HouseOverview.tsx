@@ -25,6 +25,38 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
         ))}
       </section>
 
+      <section className="panel signal-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">MAX · live input</p>
+            <h2>Сигналы жителей</h2>
+          </div>
+          <span className="live-indicator"><i /> {state.integration.max === 'REAL' ? 'бот подключён' : 'demo mode'}</span>
+        </div>
+        <div className="signal-feed">
+          {state.recent_signals.length === 0 ? <p className="empty">Напишите боту о проблеме — сообщение появится здесь.</p> : null}
+          {state.recent_signals.slice(0, 8).map((signal) => {
+            const content = (
+              <>
+                <span className="signal-meta">
+                  <b>{signal.source_type === 'max_message' ? 'MAX' : 'WEB'}</b>
+                  <span>житель · {new Date(signal.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
+                </span>
+                <strong>{signal.text}</strong>
+                <small className={signal.issue ? 'signal-linked' : 'signal-waiting'}>
+                  {signal.issue ? `Связано: ${signal.issue.title}` : 'Ждёт контекста следующего сообщения'}
+                </small>
+              </>
+            )
+            return signal.issue ? (
+              <button className="signal-message" key={signal.id} onClick={() => onIssue(signal.issue!.id)}>{content}</button>
+            ) : (
+              <article className="signal-message" key={signal.id}>{content}</article>
+            )
+          })}
+        </div>
+      </section>
+
       <section className="panel">
         <div className="section-heading">
           <div>
@@ -70,4 +102,3 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
     </>
   )
 }
-
