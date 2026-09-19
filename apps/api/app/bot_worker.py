@@ -331,7 +331,7 @@ def issue_keyboard(issue: dict[str, Any], miniapp_url: str, bot_username: str) -
         if current_order.get("evidence"):
             rows.append([{"type": "callback", "text": "Завершить работу", "payload": f"order_done:{issue_id}"}])
         else:
-            rows.append([{"type": "callback", "text": "Добавить фото evidence", "payload": f"order_evidence:{issue_id}"}])
+            rows.append([{"type": "callback", "text": "Добавить evidence (demo)", "payload": f"order_evidence:{issue_id}"}])
     if issue.get("state") == "DONE_PENDING_VERIFICATION":
         rows.append(
             [

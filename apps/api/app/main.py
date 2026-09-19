@@ -208,11 +208,13 @@ def house_state(house_id: str, db: Session = Depends(get_db)):
     initiatives = db.scalars(select(Initiative).where(Initiative.house_id == house_id, Initiative.state != InitiativeState.CLOSED.value)).all()
     threshold = get_house_config(house_id).recurrence.count
     recent_signals = db.scalars(
-        select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(12)
+        select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(40)
     ).all()
     signal_feed = []
     for item in recent_signals:
         linked_issue = db.scalar(select(Issue).join(Issue.signals).where(Signal.id == item.id))
+        if linked_issue is None and item.ai_actionability_score is not None and item.ai_actionability_score < 0.4:
+            continue
         signal_feed.append(
             {
                 **signal_dict(item),
@@ -224,6 +226,8 @@ def house_state(house_id: str, db: Session = Depends(get_db)):
                 ),
             }
         )
+        if len(signal_feed) >= 12:
+            break
     return {
         "house": house_dict(house),
         "metrics": {

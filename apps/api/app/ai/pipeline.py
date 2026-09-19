@@ -105,11 +105,16 @@ def resolve_zone_asset(db: Session, house_id: str, extraction: StructuredExtract
     candidates = [item for item in assets if not zone or item.zone_id == zone.id]
     asset = next((item for item in candidates if item.type == extraction.asset_hint), None)
     if not asset and extraction.asset_hint:
-        asset = max(
+        fuzzy_asset = max(
             candidates,
             key=lambda item: SequenceMatcher(None, item.type, extraction.asset_hint or "").ratio(),
             default=None,
         )
+        # A fuzzy match may resolve spelling variants, but must never turn a
+        # lighting/water signal into an unrelated elevator just because it is
+        # the only asset in that zone. Low confidence stays unresolved.
+        if fuzzy_asset and SequenceMatcher(None, fuzzy_asset.type, extraction.asset_hint or "").ratio() >= 0.8:
+            asset = fuzzy_asset
     confidence = 0.95 if zone and asset else (0.7 if zone else 0.35)
     return Resolution(zone=zone, asset=asset, confidence=confidence, needs_clarification=zone is None)
 
@@ -121,10 +126,11 @@ def semantic_similarity(left: str, right: str) -> float:
 def duplicate_score(existing: Issue, *, house_id: str, zone_id: str | None, asset_id: str | None, category: str, text: str) -> float:
     if existing.house_id != house_id:
         return 0.0
+    if existing.category != category:
+        return 0.0
     score = 0.15
     score += 0.25 if existing.zone_id and existing.zone_id == zone_id else 0
     score += 0.35 if existing.asset_id and existing.asset_id == asset_id else 0
     score += 0.15 if existing.category == category else 0
     score += 0.10 * semantic_similarity(existing.description, text)
     return round(score, 3)
-

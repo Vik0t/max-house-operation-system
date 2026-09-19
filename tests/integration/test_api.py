@@ -98,6 +98,18 @@ def test_ai_timeout_returns_manual_fallback(client):
     assert response.json()["fallback"]["type"] == "MANUAL_CLASSIFICATION"
 
 
+def test_asset_resolution_does_not_cross_category_boundaries(client):
+    response = client.post(
+        "/signals",
+        json={"house_id": "demo-house-a", "text": "свет в первом подъезде не работает", "author_id": "lighting-resident"},
+    )
+    assert response.status_code == 201
+    issue = response.json()["issue"]
+    assert issue["category"] == "lighting"
+    assert issue["zone_id"] == "house-a-entrance-1"
+    assert issue["asset_id"] is None
+
+
 def test_user_can_resolve_uncertain_duplicate_both_ways(client):
     first = client.post(
         "/signals",
