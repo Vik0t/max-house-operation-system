@@ -52,7 +52,7 @@ MAX_BOT_TOKEN=...
 MAX_CA_BUNDLE=/app/certs/russian-trusted-ca.pem
 ```
 
-Compose запустит отдельный `bot` worker. Он читает `GET /updates` через Long Polling, отправляет сообщения в существующий Signal/Issue pipeline и отвечает в MAX. Ответы содержат настоящую inline-клавиатуру: resident confirmation, `open_app`, голосование инициативы и проверку результата. Чат подписывается на созданный Issue и получает уведомления о смене состояния. `MAX_CA_BUNDLE` содержит официальную цепочку Russian Trusted Root/Sub CA; TLS verification не отключается. Подробности: [docs/max_setup.md](docs/max_setup.md).
+Compose запустит отдельный `bot` worker. Он читает `GET /updates` через Long Polling, отправляет сообщения в существующий Signal/Issue pipeline и отвечает в MAX. `/start` открывает чатовый пульт: сообщение о проблеме проходит через категорию и зону, `/status` показывает активные Issue с кнопками, а инициативу можно создать и довести до handoff прямо в чате. Карточки Issue содержат настоящие inline-кнопки resident confirmation, подтверждения представителя, передачи в УК, назначения работы, evidence, проверки результата и `open_app`. Чат подписывается на созданный Issue и получает уведомления о смене состояния. `MAX_CA_BUNDLE` содержит официальную цепочку Russian Trusted Root/Sub CA; TLS verification не отключается. Подробности: [docs/max_setup.md](docs/max_setup.md).
 
 Проверка:
 
@@ -60,7 +60,7 @@ Compose запустит отдельный `bot` worker. Он читает `GET
 docker compose logs -f bot
 ```
 
-В MAX откройте своего бота и отправьте `/start`. Команды: `/status`, `/house_a`, `/house_b`, `/help`. Badge `MAX REAL · BOT ONLINE` означает, что и Bot API, и polling-worker реально отвечают.
+В MAX откройте своего бота и отправьте `/start`. Используйте кнопки `Сообщить о проблеме`, `Состояние дома`, `Предложить инициативу`, `Сменить дом`; команды: `/status`, `/house_a`, `/house_b`, `/menu`, `/cancel`, `/help`. Badge `MAX REAL · BOT ONLINE` означает, что и Bot API, и polling-worker реально отвечают.
 
 ## Demo за 4 минуты
 
@@ -132,7 +132,7 @@ Suite покрывает:
 
 | Интеграция | Статус |
 |---|---|
-| MAX Bot API | REAL: production worker получает сообщения и callbacks, отправляет inline keyboard/open_app/status notifications и отвечает как `@t312_hakaton_max_bot`; webhook path также готов |
+| MAX Bot API | REAL: production worker получает сообщения и callbacks, ведёт chat-first wizard, отправляет inline keyboard/open_app/status notifications и отвечает как `@t312_hakaton_max_bot`; webhook path также готов |
 | MAX Bridge / launch context | REAL adapter: официальный Bridge загружается в mini-app, подписанный `initData` проверяется backend HMAC и TTL |
 | Локальный direct input | REAL local input path |
 | AI pipeline | REAL deterministic structured pipeline; внешний LLM не требуется |

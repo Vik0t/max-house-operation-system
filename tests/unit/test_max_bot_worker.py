@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.bot_worker import PollState, format_result, handle_callback, help_text, initiative_keyboard, issue_keyboard, notify_state_changes
+from app.bot_worker import PollState, format_result, handle_callback, help_text, initiative_keyboard, issue_keyboard, menu_keyboard, notify_state_changes
 from app.integrations.max_updates import IncomingMaxCallback, parse_incoming_callback, parse_incoming_message, polling_is_active
 
 
@@ -101,6 +101,53 @@ def test_help_documents_house_switching():
     assert "/house_a" in response
     assert "/house_b" in response
     assert "demo-house-a" in response
+
+
+def test_menu_exposes_chat_first_product_actions():
+    buttons = menu_keyboard()[0]["payload"]["buttons"]
+    payloads = {button["payload"] for row in buttons for button in row}
+    assert {"menu:report", "menu:status", "menu:initiative", "menu:houses"} <= payloads
+
+
+def test_issue_keyboard_exposes_real_lifecycle_actions():
+    buttons = issue_keyboard({"id": "issue-1", "state": "ACTION_READY"}, "", "dompuls_bot")[0]["payload"]["buttons"]
+    assert buttons[0][0]["payload"] == "issue_submit:issue-1"
+    buttons = issue_keyboard(
+        {
+            "id": "issue-1",
+            "state": "IN_PROGRESS",
+            "work_orders": [{"id": "order-1", "status": "IN_PROGRESS", "evidence": []}],
+        },
+        "",
+        "dompuls_bot",
+    )[0]["payload"]["buttons"]
+    assert buttons[0][0]["payload"] == "order_evidence:issue-1"
+
+
+def test_menu_report_starts_persistent_dialog(tmp_path):
+    class Adapter:
+        answer = None
+
+        async def answer_callback(self, callback_id, **kwargs):
+            self.answer = kwargs
+
+    class Api:
+        pass
+
+    state = PollState(str(tmp_path / "bot-state.json"), "demo-house-a")
+    adapter = Adapter()
+    asyncio.run(
+        handle_callback(
+            adapter,
+            Api(),
+            IncomingMaxCallback("cb-1", "menu:report", "42", "77"),
+            "https://example.test/app/",
+            "dompuls_bot",
+            state,
+        )
+    )
+    assert state.dialog("chat:77")["mode"] == "report_text"
+    assert "Сообщить о проблеме" in adapter.answer["message"]["text"]
 
 
 def test_issue_keyboard_uses_real_max_callbacks_and_open_app():

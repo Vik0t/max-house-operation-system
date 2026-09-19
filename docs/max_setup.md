@@ -51,9 +51,9 @@ Supported commands:
 - `/status` — current House State metrics;
 - `/house_a` and `/house_b` — config-driven house switch for the current dialog/chat.
 
-Any other text enters the real Signal → Issue/Initiative pipeline. The response reports the created/clustered entity, state, confirmations and recurrence. According to MAX documentation, Long Polling is for development and testing, not production.
+`/start` показывает chat-first меню. `Сообщить о проблеме` запускает пошаговый диалог: бот принимает свободный текст, предлагает категорию, показывает зоны дома и создаёт Signal → Issue с ручным уточнением. `Состояние дома` показывает активные проблемы и инициативы с кнопками открытия. `Предложить инициативу` создаёт summary и запускает неофициальный poll. `/cancel` сбрасывает незавершённый диалог. Любой другой текст входит в обычный Signal → Issue/Initiative pipeline. Ответ сообщает созданную/объединённую сущность, состояние, подтверждения и recurrence. Согласно документации MAX, Long Polling предназначен для разработки и тестирования, а не для production.
 
-Issue responses include `У меня тоже`, `open_app` and browser fallback buttons. Resident confirmation is idempotent per MAX user. Initiative options are callback buttons with one vote per user. The dialog is subscribed to the Issue state; after completion the bot sends `Исправлено` / `Не исправлено`, and the resident can close or reopen the loop without leaving MAX.
+Issue responses include `У меня тоже`, `Подтвердить и передать`, `Передать в УК`, `Принять в работу`, `Назначить исполнителя`, `Начать работу`, `Добавить фото evidence`, `Завершить`, `open_app` and browser fallback buttons. Resident confirmation is idempotent per MAX user. Initiative options are callback buttons with one vote per user and `Завершить опрос и передать`. The dialog is subscribed to the Issue state; after completion the bot sends `Исправлено` / `Не исправлено`, and the resident can close or reopen the loop without leaving MAX.
 
 The mini-app refreshes House State every five seconds, so a Signal received from MAX becomes visible without reloading the page.
 
