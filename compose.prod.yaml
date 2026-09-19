@@ -33,11 +33,11 @@ services:
     expose:
       - "8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
-      interval: 15s
-      timeout: 15s
-      retries: 20
-      start_period: 30s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 60s
     volumes:
       - dompuls_bot_state:/var/lib/dompuls-bot:ro
     restart: unless-stopped
