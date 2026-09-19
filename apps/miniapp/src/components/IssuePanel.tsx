@@ -6,6 +6,7 @@ type Props = {
   busy: boolean
   onAction: (action: string) => void
   onClose: () => void
+  onShare: () => void
 }
 
 function nextAction(issue: Issue): { action: string; label: string } | null {
@@ -21,7 +22,7 @@ function nextAction(issue: Issue): { action: string; label: string } | null {
   return null
 }
 
-export function IssuePanel({ issue, busy, onAction, onClose }: Props) {
+export function IssuePanel({ issue, busy, onAction, onClose, onShare }: Props) {
   const next = nextAction(issue)
   const order = issue.work_orders?.at(-1)
   const evidenceCount = issue.signals?.reduce((sum, signal) => sum + signal.attachments.length, 0) || 0
@@ -58,6 +59,7 @@ export function IssuePanel({ issue, busy, onAction, onClose }: Props) {
           </section>
         ) : null}
         {next ? <button className="primary full" disabled={busy} onClick={() => onAction(next.action)}>{busy ? 'Выполняется…' : next.label}</button> : null}
+        <button className="secondary full" disabled={busy} onClick={onShare}>Поделиться в MAX</button>
         {issue.state === 'DONE_PENDING_VERIFICATION' ? (
           <div className="verification">
             <h3>Проблема устранена?</h3>

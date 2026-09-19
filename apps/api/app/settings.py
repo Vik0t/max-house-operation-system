@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     max_poll_state_path: str = "/var/lib/dompuls-bot/state.json"
     max_default_house_id: str = "demo-house-a"
     max_miniapp_url: str = "http://localhost:3000"
+    max_init_data_max_age_seconds: int = 3600
     dompuls_api_url: str = "http://api:8000"
     llm_mode: str = "deterministic"
     llm_api_key: str | None = None

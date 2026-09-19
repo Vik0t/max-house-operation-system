@@ -24,6 +24,7 @@ from .domain import (
 )
 from .enums import InitiativeState, IssueState, WorkOrderState
 from .integrations.max_adapter import MaxAdapterError, build_max_adapter
+from .integrations.max_init_data import MaxInitDataError, validate_max_init_data
 from .integrations.max_updates import parse_incoming_message, polling_is_active
 from .models import (
     Asset,
@@ -48,6 +49,7 @@ from .schemas import (
     HandoffRequest,
     InitiativeCreate,
     ManualResolveRequest,
+    MaxInitDataRequest,
     PollRequest,
     SignalCreate,
     SubmitRequest,
@@ -131,6 +133,20 @@ async def max_permissions(chat_id: str):
         return await max_adapter.check_chat_permissions(chat_id)
     except MaxAdapterError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/integrations/max/init-data/validate")
+def max_init_data(payload: MaxInitDataRequest):
+    if not settings.max_bot_token:
+        raise HTTPException(status_code=503, detail="MAX bot token is not configured")
+    try:
+        return validate_max_init_data(
+            payload.init_data,
+            settings.max_bot_token,
+            max_age_seconds=settings.max_init_data_max_age_seconds,
+        )
+    except MaxInitDataError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 @app.get("/houses")

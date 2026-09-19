@@ -28,6 +28,11 @@ docker compose up --build
 - OpenAPI: <http://localhost:8000/docs>
 - health: <http://localhost:8000/health>
 
+Публичный demo:
+
+- mini-app: <https://apaww.github.io/dom.sreda.io/>
+- API / health: <https://104.252.77.141.nip.io/health>
+
 Первый запуск автоматически выполняет `alembic upgrade head` и загружает seed. Повторный запуск не дублирует данные.
 
 ## Environment
@@ -109,7 +114,7 @@ Suite покрывает:
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон: `25 passed`; production React build также проходит. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон: `28 passed`; production React build и live browser verification также проходят. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 
@@ -127,7 +132,8 @@ Suite покрывает:
 
 | Интеграция | Статус |
 |---|---|
-| MAX Bot API | REAL: отдельный Long Polling worker получает сообщения и отвечает; webhook path также сохранён для production-перехода |
+| MAX Bot API | REAL: production Long Polling worker получает сообщения и отвечает как `@t312_hakaton_max_bot`; webhook path также готов |
+| MAX Bridge / launch context | REAL adapter: официальный Bridge загружается в mini-app, подписанный `initData` проверяется backend HMAC и TTL |
 | Локальный direct input | REAL local input path |
 | AI pipeline | REAL deterministic structured pipeline; внешний LLM не требуется |
 | Отправка в УК / ГИС ЖКХ / Госуслуги Дом | SIMULATED, `Submission.is_simulated=true` |
@@ -149,7 +155,7 @@ Security notes: [docs/security.md](docs/security.md).
 
 ## Ограничения MVP
 
-- Long Polling официально предназначен MAX для разработки/тестирования; перед production нужен публичный HTTPS webhook на порту 443.
+- Сейчас bot стабильно работает через Long Polling с VPS. Публичный HTTPS webhook endpoint готов; переключение делается после выдачи/подключения webhook со стороны MAX.
 - Для чтения группового чата бот должен быть администратором с правом `read_all_messages`; личный диалог работает без этого права.
 - Внешний LLM не подключён: deterministic pipeline выбран для воспроизводимого hackathon demo. Есть schema validation и fault injection fallback.
 - Нет production auth/RBAC, object storage, CRM/ГИС ЖКХ adapter и юридически значимого ОСС.
@@ -164,3 +170,4 @@ Security notes: [docs/security.md](docs/security.md).
 - [AI metrics](docs/ai_metrics.md)
 - [Evidence registry](docs/evidence_registry.md)
 - [Security](docs/security.md)
+- [Production deployment](docs/deployment.md)

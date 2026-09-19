@@ -3,6 +3,7 @@ import { api } from './api'
 import { HouseOverview } from './components/HouseOverview'
 import { InitiativeCard } from './components/InitiativeCard'
 import { IssuePanel } from './components/IssuePanel'
+import { getMaxLaunchContext, notifyMax, shareIssue } from './maxBridge'
 import type { House, HouseState, Initiative, Issue, SignalResult } from './types'
 
 const demoMessages = [
@@ -13,6 +14,7 @@ const demoMessages = [
 ]
 
 export default function App() {
+  const [launchContext] = useState(() => getMaxLaunchContext())
   const [houses, setHouses] = useState<House[]>([])
   const [houseId, setHouseId] = useState('demo-house-a')
   const [state, setState] = useState<HouseState | null>(null)
@@ -24,6 +26,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [maxConnection, setMaxConnection] = useState<'CHECKING' | 'CONNECTED' | 'CONFIGURED' | 'SIMULATED'>('CHECKING')
   const [fallbackSignalId, setFallbackSignalId] = useState<string | null>(null)
+  const [maxUserName, setMaxUserName] = useState<string | null>(launchContext.unsafe?.user?.first_name || null)
 
   const refresh = useCallback(async () => {
     const next = await api.state(houseId)
@@ -52,6 +55,18 @@ export default function App() {
     const timer = window.setInterval(() => { void checkMax() }, 20_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!launchContext.initData) return
+    api.validateMaxContext(launchContext.initData)
+      .then((context) => setMaxUserName(context.user?.first_name || null))
+      .catch(() => setError('MAX не подтвердил контекст запуска. Откройте mini-app из бота ещё раз.'))
+  }, [launchContext.initData])
+
+  useEffect(() => {
+    if (!launchContext.issueId) return
+    api.issue(launchContext.issueId).then(setIssue).catch(() => undefined)
+  }, [launchContext.issueId])
 
   async function perform(task: () => Promise<void>) {
     setBusy(true)
@@ -116,10 +131,18 @@ export default function App() {
     })
   }
 
+  function shareCurrentIssue() {
+    if (!issue) return
+    void perform(async () => {
+      await shareIssue(issue.title, issue.id)
+      notifyMax('success')
+    })
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand"><span>ДП</span><div><strong>ДомПульс</strong><small>операционная память дома</small></div></div>
+        <div className="brand"><span>ДП</span><div><strong>ДомПульс</strong><small>{maxUserName ? `${maxUserName}, состояние вашего дома` : 'операционная память дома'}</small></div></div>
         <select aria-label="Выбрать дом" value={houseId} onChange={(event) => { setHouseId(event.target.value); setIssue(null); setTimeline(null) }}>
           {houses.map((house) => <option key={house.id} value={house.id}>{house.address}</option>)}
         </select>
@@ -175,7 +198,7 @@ export default function App() {
         ))}
       </main>
 
-      {issue ? <IssuePanel issue={issue} busy={busy} onAction={runIssueAction} onClose={() => setIssue(null)} /> : null}
+      {issue ? <IssuePanel issue={issue} busy={busy} onAction={runIssueAction} onClose={() => setIssue(null)} onShare={shareCurrentIssue} /> : null}
       {timeline ? (
         <div className="drawer-backdrop" role="presentation" onMouseDown={() => setTimeline(null)}>
           <aside className="drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>

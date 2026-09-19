@@ -29,6 +29,10 @@ export const api = {
       body: JSON.stringify({ candidate_issue_id: candidateIssueId, decision }),
     }),
   maxStatus: () => request<{ mode: string; connected: boolean; api_connected?: boolean; polling_active?: boolean; transport?: string; bot?: { first_name?: string }; error?: string }>('/integrations/max/status'),
+  validateMaxContext: (initData: string) => request<{ valid: true; user?: { id: number; first_name: string }; chat?: { id: number; type: string }; start_param?: string }>('/integrations/max/init-data/validate', {
+    method: 'POST',
+    body: JSON.stringify({ init_data: initData }),
+  }),
   confirm: (issueId: string) => request<Issue>(`/issues/${issueId}/confirm`, { method: 'POST', body: '{}' }),
   submit: (issueId: string) => request<Issue>(`/issues/${issueId}/submit`, { method: 'POST', body: '{}' }),
   accept: (issueId: string) => request<Issue>(`/issues/${issueId}/accept`, { method: 'POST', body: '{}' }),

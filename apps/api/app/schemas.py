@@ -123,3 +123,7 @@ class MaxWebhook(BaseModel):
     house_id: str
     text: str
     attachments: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class MaxInitDataRequest(BaseModel):
+    init_data: str = Field(min_length=1, max_length=16_000)

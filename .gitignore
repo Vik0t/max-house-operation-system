@@ -1,4 +1,6 @@
 .env
+.env.prod
+.env.*.local
 .DS_Store
 __pycache__/
 *.py[cod]
@@ -11,4 +13,3 @@ dist/
 *.sqlite3
 uploads/*
 !uploads/.gitkeep
-

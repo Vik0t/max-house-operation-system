@@ -1,9 +1,8 @@
 .git
-.env
+.env*
 node_modules
 **/node_modules
 **/__pycache__
 .pytest_cache
 *.sqlite3
 dist
-
