@@ -23,6 +23,19 @@ class MaxAdapter(ABC):
     @abstractmethod
     async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]: ...
 
+    @abstractmethod
+    async def get_updates(
+        self,
+        *,
+        marker: int | None = None,
+        timeout: int = 30,
+        limit: int = 100,
+        update_types: list[str] | None = None,
+    ) -> dict[str, Any]: ...
+
+    @abstractmethod
+    async def get_subscriptions(self) -> list[dict[str, Any]]: ...
+
 
 class MockMaxAdapter(MaxAdapter):
     mode = "SIMULATED"
@@ -36,6 +49,19 @@ class MockMaxAdapter(MaxAdapter):
     async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]:
         return {"chat_id": chat_id, "permissions": [], "has_read_all_messages": False, "simulated": True}
 
+    async def get_updates(
+        self,
+        *,
+        marker: int | None = None,
+        timeout: int = 30,
+        limit: int = 100,
+        update_types: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return {"updates": [], "marker": marker, "simulated": True}
+
+    async def get_subscriptions(self) -> list[dict[str, Any]]:
+        return []
+
 
 class RealMaxAdapter(MaxAdapter):
     mode = "REAL"
@@ -47,11 +73,11 @@ class RealMaxAdapter(MaxAdapter):
         self.headers = {"Authorization": settings.max_bot_token}
         self.verify: bool | str = settings.max_ca_bundle or True
 
-    async def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
+    async def _request(self, method: str, path: str, *, request_timeout: float = 8.0, **kwargs) -> Any:
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                async with httpx.AsyncClient(timeout=8.0, verify=self.verify) as client:
+                async with httpx.AsyncClient(timeout=request_timeout, verify=self.verify) as client:
                     response = await client.request(method, f"{self.base_url}{path}", headers=self.headers, **kwargs)
                 response.raise_for_status()
                 return response.json()
@@ -70,8 +96,8 @@ class RealMaxAdapter(MaxAdapter):
     async def send_message(self, *, text: str, chat_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
         if not chat_id and not user_id:
             raise MaxAdapterError("chat_id or user_id is required")
-        query = f"chat_id={chat_id}" if chat_id else f"user_id={user_id}"
-        return await self._request("POST", f"/messages?{query}", json={"text": text, "format": "markdown"})
+        params = {"chat_id": chat_id} if chat_id else {"user_id": user_id}
+        return await self._request("POST", "/messages", params=params, json={"text": text, "format": "markdown"})
 
     async def check_chat_permissions(self, chat_id: str) -> dict[str, Any]:
         member = await self._request("GET", f"/chats/{chat_id}/members/me")
@@ -82,6 +108,27 @@ class RealMaxAdapter(MaxAdapter):
             "has_read_all_messages": "read_all_messages" in permissions,
             "simulated": False,
         }
+
+    async def get_updates(
+        self,
+        *,
+        marker: int | None = None,
+        timeout: int = 30,
+        limit: int = 100,
+        update_types: list[str] | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, str | int] = {"timeout": timeout, "limit": limit}
+        if marker is not None:
+            params["marker"] = marker
+        if update_types:
+            params["types"] = ",".join(update_types)
+        return await self._request("GET", "/updates", params=params, request_timeout=timeout + 10)
+
+    async def get_subscriptions(self) -> list[dict[str, Any]]:
+        result = await self._request("GET", "/subscriptions")
+        if isinstance(result, list):
+            return result
+        return result.get("subscriptions", [])
 
 
 def build_max_adapter(settings: Settings) -> MaxAdapter:

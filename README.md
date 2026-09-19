@@ -15,7 +15,7 @@ Signal → Issue / Initiative → House / Zone / Asset → Action → Submission
 
 - Docker Desktop / Docker Engine с Compose v2;
 - свободные порты `3000` и `8000`;
-- для реального MAX — bot token, доверенный CA bundle Минцифры и публичный HTTPS webhook на порту 443.
+- для реального MAX в hackathon/dev — bot token; CA bundle Минцифры уже лежит в `certs/` и используется только MAX-клиентом.
 
 ```bash
 cp .env.example .env
@@ -44,11 +44,18 @@ LLM_MODE=deterministic
 ```dotenv
 MAX_MODE=real
 MAX_BOT_TOKEN=...
-MAX_CA_BUNDLE=/run/secrets/russian-trusted-ca.pem
-MAX_WEBHOOK_SECRET=...
+MAX_CA_BUNDLE=/app/certs/russian-trusted-ca.pem
 ```
 
-`MAX_CA_BUNDLE` должен содержать доверенную цепочку Russian Trusted Root/Sub CA. Не отключайте TLS verification. Подробности: [docs/max_setup.md](docs/max_setup.md).
+Compose запустит отдельный `bot` worker. Он читает `GET /updates` через Long Polling, отправляет сообщения в существующий Signal/Issue pipeline и отвечает в MAX. `MAX_CA_BUNDLE` содержит официальную цепочку Russian Trusted Root/Sub CA; TLS verification не отключается. Подробности: [docs/max_setup.md](docs/max_setup.md).
+
+Проверка:
+
+```bash
+docker compose logs -f bot
+```
+
+В MAX откройте своего бота и отправьте `/start`. Команды: `/status`, `/house_a`, `/house_b`, `/help`. Badge `MAX REAL · BOT ONLINE` означает, что и Bot API, и polling-worker реально отвечают.
 
 ## Demo за 4 минуты
 
@@ -96,13 +103,13 @@ Suite покрывает:
 - config/schema, contextual duplicate scoring и recurrence;
 - AI structured extraction и synthetic eval;
 - API, database, AI fallback и MAX mock adapter;
-- webhook idempotency;
+- webhook и polling-message idempotency;
 - golden path 20 clean последовательных прогонов;
 - negative verification/rework;
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон: `19 passed`; production React build также проходит. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон: `25 passed`; production React build также проходит. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 
@@ -120,7 +127,7 @@ Suite покрывает:
 
 | Интеграция | Статус |
 |---|---|
-| MAX Bot API adapter, webhook contract, secret validation, idempotency, notifications API | REAL-ready; UI показывает CONNECTED только после успешного strict-TLS `GET /me` |
+| MAX Bot API | REAL: отдельный Long Polling worker получает сообщения и отвечает; webhook path также сохранён для production-перехода |
 | Локальный direct input | REAL local input path |
 | AI pipeline | REAL deterministic structured pipeline; внешний LLM не требуется |
 | Отправка в УК / ГИС ЖКХ / Госуслуги Дом | SIMULATED, `Submission.is_simulated=true` |
@@ -142,8 +149,8 @@ Security notes: [docs/security.md](docs/security.md).
 
 ## Ограничения MVP
 
-- Для real MAX webhook нужен публичный HTTPS endpoint на порту 443, group bot membership и право `read_all_messages`.
-- На окружениях без Russian Trusted Root/Sub CA MAX остаётся `REAL · CONFIGURED`, но не `CONNECTED`; приложение и основной direct-input flow продолжают работать.
+- Long Polling официально предназначен MAX для разработки/тестирования; перед production нужен публичный HTTPS webhook на порту 443.
+- Для чтения группового чата бот должен быть администратором с правом `read_all_messages`; личный диалог работает без этого права.
 - Внешний LLM не подключён: deterministic pipeline выбран для воспроизводимого hackathon demo. Есть schema validation и fault injection fallback.
 - Нет production auth/RBAC, object storage, CRM/ГИС ЖКХ adapter и юридически значимого ОСС.
 - Eval dataset содержит 30 синтетических примеров, не 300–500 production-like сообщений; метрики нельзя обобщать на реальные чаты.

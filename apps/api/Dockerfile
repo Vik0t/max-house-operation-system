@@ -9,6 +9,7 @@ COPY scripts ./scripts
 COPY alembic ./alembic
 COPY tests ./tests
 COPY datasets ./datasets
+COPY certs ./certs
 RUN chmod +x scripts/api-entrypoint.sh
 EXPOSE 8000
 CMD ["./scripts/api-entrypoint.sh"]

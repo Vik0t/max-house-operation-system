@@ -24,6 +24,7 @@ from .domain import (
 )
 from .enums import InitiativeState, IssueState, WorkOrderState
 from .integrations.max_adapter import MaxAdapterError, build_max_adapter
+from .integrations.max_updates import parse_incoming_message, polling_is_active
 from .models import (
     Asset,
     AuditEvent,
@@ -111,9 +112,17 @@ def health(db: Session = Depends(get_db)):
 async def max_status():
     try:
         bot = await max_adapter.get_bot()
-        return {"mode": max_adapter.mode, "connected": True, "bot": bot}
+        polling_active = polling_is_active(settings.max_poll_state_path, settings.max_poll_timeout) if max_adapter.mode == "REAL" else False
+        return {
+            "mode": max_adapter.mode,
+            "connected": polling_active if max_adapter.mode == "REAL" else True,
+            "api_connected": True,
+            "transport": "LONG_POLLING" if max_adapter.mode == "REAL" else "SIMULATED",
+            "polling_active": polling_active,
+            "bot": bot,
+        }
     except MaxAdapterError as exc:
-        return {"mode": max_adapter.mode, "connected": False, "error": str(exc)}
+        return {"mode": max_adapter.mode, "connected": False, "api_connected": False, "polling_active": False, "error": str(exc)}
 
 
 @app.get("/integrations/max/chats/{chat_id}/permissions")
@@ -538,24 +547,17 @@ def read_audit(entity_type: str, entity_id: str, db: Session = Depends(get_db)):
 
 
 def parse_max_update(payload: dict[str, Any]) -> SignalCreate | None:
-    if payload.get("update_type") != "message_created":
-        return None
-    message = payload.get("message") or {}
-    body = message.get("body") or {}
-    sender = message.get("sender") or {}
-    recipient = message.get("recipient") or {}
-    text = body.get("text")
-    house_id = payload.get("house_id") or "demo-house-a"
-    if not text:
+    message = parse_incoming_message(payload)
+    if not message:
         return None
     return SignalCreate(
-        house_id=house_id,
-        text=text,
-        author_id=str(sender.get("user_id", "max-user")),
-        chat_id=str(recipient.get("chat_id") or payload.get("chat_id") or ""),
+        house_id=payload.get("house_id") or settings.max_default_house_id,
+        text=message.text,
+        author_id=message.user_id,
+        chat_id=message.chat_id,
         source_type="max_message",
-        external_id=str(body.get("mid") or message.get("id") or f"{payload.get('timestamp')}:{sender.get('user_id')}"),
-        attachments=body.get("attachments") or [],
+        external_id=message.external_id,
+        attachments=message.attachments,
     )
 
 

@@ -40,13 +40,14 @@ Interactive schema is available at `/docs`; OpenAPI JSON is at `/openapi.json`.
 
 ## MAX
 
+- Bot worker: `GET https://platform-api2.max.ru/updates` (Long Polling, hackathon/dev)
+- Bot replies: `POST https://platform-api2.max.ru/messages`
 - `GET /integrations/max/status`
 - `GET /integrations/max/chats/{chat_id}/permissions`
 - `POST /integrations/max/webhook`
 
-Webhook verifies `X-Max-Bot-Api-Secret` when configured and consumes official `message_created` Update shape. A public deployment should map chat IDs to house IDs explicitly; the demo fallback house is House A.
+The worker and webhook consume the same official `message_created` Update shape. Polling conversations can switch config with `/house_a` and `/house_b`; the default is House A. Webhook verifies `X-Max-Bot-Api-Secret` when configured. A production deployment should persist an explicit chat-to-house mapping and move reception to webhook.
 
 ## Audit
 
 - `GET /audit/{entity_type}/{entity_id}`
-

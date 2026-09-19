@@ -11,6 +11,8 @@ curl http://localhost:8000/health
 
 Open <http://localhost:3000>. Keep `/docs` in a second tab as architecture proof.
 
+For the real MAX demo, open the configured bot, send `/start`, then send the lift messages there. Watch `docker compose logs -f bot`; the same Issue will appear in the mini-app. Use `/house_b` to demonstrate config-driven switching from the bot.
+
 ## Exact flow
 
 ### 0:00–0:40 — House memory
@@ -48,12 +50,11 @@ Switch to House B. Point out different asset tree, management organization, recu
 
 ### 3:35–4:00 — Reliability / integrity
 
-Mention 20 clean E2E runs, webhook idempotency, state-machine rejection, manual AI fallback and provenance. Click `Проверить AI fallback` if the network/demo is stable.
+Mention 20 clean E2E runs, polling/webhook idempotency, state-machine rejection, manual AI fallback and provenance. Click `Проверить AI fallback` if the network/demo is stable.
 
 ## Recovery
 
 - Reset: `./scripts/reset-demo.sh`.
 - API health: `curl http://localhost:8000/health`.
-- Logs: `docker compose logs --tail=100 api`.
-- If MAX CA/token/webhook is unavailable, keep direct input and show `REAL · CONFIGURED`; never call it connected.
-
+- Logs: `docker compose logs --tail=100 api bot`.
+- If MAX CA/token is unavailable, keep direct input and show `REAL · CONFIGURED`; never call it connected.

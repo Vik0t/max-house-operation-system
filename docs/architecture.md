@@ -1,7 +1,7 @@
 # Architecture
 
 ```text
-MAX Bot / Direct input          React mini-app
+MAX Long Poll worker            React mini-app
           │                           │
           └──────── FastAPI ──────────┘
                        │
@@ -35,12 +35,12 @@ Timeout is injected/tested with `force_ai_failure`; API returns a manual classif
 
 - Each user command commits Signal + derived domain change atomically.
 - External IDs prevent duplicate Signals.
+- The bot persists the MAX `marker` in a Docker volume; restarts resume polling without replay.
 - `WebhookEvent.id` protects webhook processing from replay.
 - MAX calls use timeout and bounded exponential retries.
 - Audit events are committed in the same transaction as state changes.
-- Compose startup waits for PostgreSQL, runs migrations, idempotent seed, then API.
+- Compose startup waits for PostgreSQL, runs migrations, idempotent seed, then API and the independent bot worker.
 
 ## Scale layer
 
 Core code never contains a concrete address or УК policy. `configs/demo_house_a.yaml` and `configs/demo_house_b.yaml` define topology, assets, management organization, routes, contractors and recurrence rules. The selector is a live proof that the same API/UI serves different houses.
-

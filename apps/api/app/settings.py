@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     max_webhook_secret: str | None = None
     max_api_base: str = "https://platform-api2.max.ru"
     max_ca_bundle: str | None = None
+    max_poll_timeout: int = 30
+    max_poll_state_path: str = "/var/lib/dompuls-bot/state.json"
+    max_default_house_id: str = "demo-house-a"
+    max_miniapp_url: str = "http://localhost:3000"
+    dompuls_api_url: str = "http://api:8000"
     llm_mode: str = "deterministic"
     llm_api_key: str | None = None
     log_level: str = "INFO"
@@ -23,6 +28,13 @@ class Settings(BaseSettings):
     def validate_max_mode(cls, value: str) -> str:
         if value not in {"simulated", "real"}:
             raise ValueError("MAX_MODE must be simulated or real")
+        return value
+
+    @field_validator("max_poll_timeout")
+    @classmethod
+    def validate_poll_timeout(cls, value: int) -> int:
+        if not 1 <= value <= 90:
+            raise ValueError("MAX_POLL_TIMEOUT must be between 1 and 90 seconds")
         return value
 
     @property

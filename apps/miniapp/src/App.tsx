@@ -37,9 +37,20 @@ export default function App() {
   }, [houseId])
 
   useEffect(() => {
-    api.maxStatus()
+    const timer = window.setInterval(() => {
+      void refresh().catch(() => undefined)
+      if (issue?.id) void api.issue(issue.id).then(setIssue).catch(() => undefined)
+    }, 5_000)
+    return () => window.clearInterval(timer)
+  }, [issue?.id, refresh])
+
+  useEffect(() => {
+    const checkMax = () => api.maxStatus()
       .then((result) => setMaxConnection(result.mode === 'SIMULATED' ? 'SIMULATED' : result.connected ? 'CONNECTED' : 'CONFIGURED'))
       .catch(() => setMaxConnection('CONFIGURED'))
+    void checkMax()
+    const timer = window.setInterval(() => { void checkMax() }, 20_000)
+    return () => window.clearInterval(timer)
   }, [])
 
   async function perform(task: () => Promise<void>) {
@@ -123,7 +134,7 @@ export default function App() {
           </div>
           <div className="integration-badges">
             <span className={maxConnection === 'CONNECTED' ? 'real' : maxConnection === 'SIMULATED' ? 'simulated' : 'configured'}>
-              MAX {maxConnection === 'CONNECTED' ? 'REAL · CONNECTED' : maxConnection === 'CHECKING' ? 'CHECKING' : maxConnection === 'SIMULATED' ? 'SIMULATED' : 'REAL · CONFIGURED'}
+              MAX {maxConnection === 'CONNECTED' ? 'REAL · BOT ONLINE' : maxConnection === 'CHECKING' ? 'CHECKING' : maxConnection === 'SIMULATED' ? 'SIMULATED' : 'REAL · CONFIGURED'}
             </span>
             <span className="simulated">УК SIMULATED</span>
           </div>

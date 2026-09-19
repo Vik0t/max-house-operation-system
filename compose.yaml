@@ -31,6 +31,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    volumes:
+      - dompuls_bot_state:/var/lib/dompuls-bot:ro
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["python", "-m", "app.bot_worker"]
+    env_file: .env
+    environment:
+      DOMPULS_API_URL: http://api:8000
+      MAX_POLL_STATE_PATH: /var/lib/dompuls-bot/state.json
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - dompuls_bot_state:/var/lib/dompuls-bot
     restart: unless-stopped
 
   web:
@@ -48,3 +66,4 @@ services:
 
 volumes:
   dompuls_pgdata:
+  dompuls_bot_state:
