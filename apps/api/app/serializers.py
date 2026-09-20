@@ -113,6 +113,7 @@ def issue_dict(issue: Issue, *, detailed: bool = False):
         "house_id": issue.house_id,
         "zone_id": issue.zone_id,
         "asset_id": issue.asset_id,
+        "asset_name": issue.asset.name if issue.asset else None,
         "category": issue.category,
         "symptom": issue.symptom,
         "title": issue.title,

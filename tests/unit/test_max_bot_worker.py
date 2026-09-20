@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.bot_worker import PollState, cancel_keyboard, format_result, handle_callback, help_text, initiative_keyboard, issue_keyboard, menu_keyboard, notify_state_changes, zone_keyboard
+from app.bot_worker import PollState, cancel_keyboard, format_result, format_status, handle_callback, help_text, initiative_keyboard, issue_button_label, issue_keyboard, menu_keyboard, notify_state_changes, zone_keyboard
 from app.integrations.max_updates import IncomingMaxCallback, parse_incoming_callback, parse_incoming_message, polling_is_active
 
 
@@ -104,11 +104,53 @@ def test_bot_response_exposes_real_domain_result():
     assert "4 событий" in response
 
 
+def test_user_facing_labels_do_not_leak_internal_category_names():
+    issue = {
+        "id": "issue-1",
+        "title": "Lighting: проблема",
+        "asset_name": "Lighting",
+        "state": "NEEDS_CONFIRMATION",
+        "confirmations_count": 3,
+    }
+    assert "Освещение" in issue_button_label(issue)
+    assert "Lighting" not in issue_button_label(issue)
+    rendered = format_result({"issue": issue}, "https://demo.example/")
+    assert "Освещение" in rendered
+    assert "Lighting" not in rendered
+    wrong_asset = {**issue, "title": "Лифт №1: проблема", "asset_name": "Лифт №1", "category": "lighting"}
+    assert "Освещение" in issue_button_label(wrong_asset)
+    assert "Лифт №1" not in issue_button_label(wrong_asset)
+
+
+def test_house_status_is_grouped_by_lifecycle_and_role_next_step():
+    rendered = format_status(
+        {
+            "house": {"address": "Никольский проспект, 12"},
+            "metrics": {
+                "active_issues": 2,
+                "work_in_progress": 1,
+                "awaiting_confirmation": 1,
+                "awaiting_verification": 0,
+                "recurring_issues": 1,
+                "initiatives": 0,
+            },
+            "issues": [
+                {"id": "issue-1", "asset_name": "Лифт №2", "state": "NEEDS_CONFIRMATION", "confirmations_count": 3},
+                {"id": "issue-2", "asset_name": "Освещение", "state": "ACCEPTED", "confirmations_count": 2},
+            ],
+        },
+        role="representative",
+    )
+    assert "Требуют подтверждений (1)" in rendered
+    assert "Приняты управляющей компанией (1)" in rendered
+    assert "домоуправляющий" in rendered
+
+
 def test_help_documents_house_switching():
     response = help_text("demo-house-a")
-    assert "/house_a" in response
-    assert "/house_b" in response
-    assert "demo-house-a" in response
+    assert "/дом_a" in response
+    assert "/дом_b" in response
+    assert "demo-house-a" not in response
 
 
 def test_menu_exposes_chat_first_product_actions():
@@ -141,7 +183,9 @@ def test_issue_keyboard_hides_operator_actions_from_resident():
 def test_issue_keyboard_shows_only_uk_action():
     buttons = issue_keyboard({"id": "issue-1", "state": "SUBMITTED"}, "", "dompuls_bot", "uk")[0]["payload"]["buttons"]
     payloads = {button["payload"] for row in buttons for button in row if button.get("type") == "callback"}
-    assert payloads == {"issue_accept:issue-1"}
+    assert "issue_accept:issue-1" in payloads
+    assert "issue_submit:issue-1" not in payloads
+    assert "issue_assign:issue-1" not in payloads
 
 
 def test_navigation_buttons_have_distinct_meaning():
@@ -252,7 +296,7 @@ def test_state_change_sends_verification_buttons(tmp_path):
     }
     adapter = Adapter()
     asyncio.run(notify_state_changes(adapter, Api(), state, "https://example.test/app/", "dompuls_bot"))
-    assert "WORK_IN_PROGRESS → DONE_PENDING_VERIFICATION" in adapter.sent[0]["text"]
+    assert "В работе → Ждёт проверки жителем" in adapter.sent[0]["text"]
     buttons = adapter.sent[0]["attachments"][0]["payload"]["buttons"]
     assert buttons[0][0]["payload"] == "verify_yes:issue-1"
 

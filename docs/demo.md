@@ -11,7 +11,7 @@ curl http://localhost:8000/health
 
 Open <http://localhost:3000>. Keep `/docs` in a second tab as architecture proof.
 
-For the real MAX demo, open the configured bot, send `/start`, then send the lift messages there. Watch `docker compose logs -f bot`; the same Issue will appear in the mini-app. Use `/house_b` to demonstrate config-driven switching from the bot.
+For the real MAX demo, open the configured bot, send `/start`, choose a role, then send the lift messages there. Watch `docker compose logs -f bot`; the same Issue will appear in the mini-app. Use `Сменить дом` or `/дом_b` to demonstrate config-driven switching from the bot.
 
 ## Exact flow
 
@@ -21,24 +21,24 @@ Show House A metrics and click `Лифт №2`. Point out three previous closed 
 
 ### 0:40–1:10 — Chat to structured Issue
 
-Send the three supplied chips in order. The current issue reaches 8 confirmations and retains two source evidence. Say: «ДомПульс связал сообщения не просто с тикетом, а с объектом и его историей».
+Send the three supplied messages in order. The current issue is shown as one grouped incident with confirmations and source messages. Say: «ДомПульс связал сообщения не просто с обращением, а с объектом и его историей».
 
 ### 1:10–2:30 — Closed loop
 
-Open the current Issue and press:
+Open the current Issue with the appropriate role and press:
 
 ```text
 Подтвердить проблему
-→ Передать ответственному
-→ Принять от имени УК
-→ Назначить мастера
+→ Передать в управляющую компанию
+→ Принять в работу
+→ Назначить исполнителя
 → Начать работу
-→ Добавить evidence
+→ Добавить фото выполнения
 → Завершить работу
-→ Да, работает
+→ Да, всё исправлено
 ```
 
-Show that Submission is honestly marked SIMULATED. After verification, Asset becomes HEALTHY. Reopen Asset timeline and show the new Issue and WorkOrder.
+Show that передача помечена как демонстрационная. After verification, Asset becomes HEALTHY. Reopen Asset timeline and show the new Issue and WorkOrder.
 
 ### 2:30–3:10 — Community initiative
 

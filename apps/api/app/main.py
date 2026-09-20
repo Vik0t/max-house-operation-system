@@ -193,6 +193,90 @@ def operational_state(db: Session, asset: Asset) -> str:
     return "HEALTHY" if issues else "UNKNOWN"
 
 
+ACTIVE_ISSUE_STATES = {
+    state.value
+    for state in IssueState
+    if state not in {IssueState.CLOSED, IssueState.CANCELLED, IssueState.REJECTED, IssueState.DUPLICATE}
+}
+
+
+def _issue_display_key(issue: Issue) -> tuple[str, str, str]:
+    """Return the stable key used to group one active incident in House State.
+
+    Signals can arrive repeatedly from a MAX group and older demo runs may have
+    created more than one Issue row. House State is a control surface, so it
+    must show one card per active asset incident while preserving the source
+    issue ids for audit/detail views.
+    """
+
+    category = (issue.category or "other").lower()
+    asset_key = issue.asset_id
+    # A low-confidence lighting extraction can temporarily point at an
+    # elevator asset. For the house overview, group it by entrance until the
+    # representative resolves the exact fixture instead of showing duplicates.
+    if category == "lighting" and (not asset_key or "elevator" in asset_key.lower()):
+        asset_key = issue.zone_id
+    symptom = (issue.symptom or "unknown").lower()
+    if symptom in {"", "unknown", "proposal"}:
+        symptom = "unknown"
+    return (asset_key or f"category:{category}", category, symptom)
+
+
+def _issue_state_priority(state: str) -> int:
+    return {
+        IssueState.WORK_IN_PROGRESS.value: 90,
+        IssueState.ACCEPTED.value: 80,
+        IssueState.SUBMITTED.value: 70,
+        IssueState.DONE_PENDING_VERIFICATION.value: 65,
+        IssueState.REOPENED.value: 60,
+        IssueState.ACTION_READY.value: 50,
+        IssueState.CONFIRMED.value: 40,
+        IssueState.NEEDS_CONFIRMATION.value: 30,
+        IssueState.DETECTED.value: 20,
+    }.get(state, 0)
+
+
+def house_state_issue_cards(
+    issues: list[Issue],
+    assets: list[Asset],
+    zones: list[Zone],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build deduplicated active cards and a compact terminal history list."""
+
+    asset_names = {asset.id: asset.name for asset in assets}
+    zone_names = {zone.id: zone.name for zone in zones}
+    groups: dict[tuple[str, str, str], list[Issue]] = {}
+    history: list[dict[str, Any]] = []
+    for issue in issues:
+        if issue.state not in ACTIVE_ISSUE_STATES:
+            history.append(issue_dict(issue))
+            continue
+        groups.setdefault(_issue_display_key(issue), []).append(issue)
+
+    cards: list[dict[str, Any]] = []
+    for candidates in groups.values():
+        primary = max(
+            candidates,
+            key=lambda item: (_issue_state_priority(item.state), item.last_seen_at or item.first_seen_at),
+        )
+        card = issue_dict(primary)
+        card.update(
+            {
+                "asset_name": asset_names.get(primary.asset_id),
+                "zone_name": zone_names.get(primary.zone_id),
+                "related_issue_count": len(candidates),
+                "related_issue_ids": [item.id for item in candidates],
+                "signals_count": sum(len(item.signals) for item in candidates),
+                "confirmations_count": max(item.confirmations_count for item in candidates),
+                "recurrence_count": max(item.recurrence_count for item in candidates),
+            }
+        )
+        cards.append(card)
+    cards.sort(key=lambda item: item.get("last_seen_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    history.sort(key=lambda item: item.get("last_seen_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return cards, history[:20]
+
+
 @app.get("/houses/{house_id}/assets")
 def list_assets(house_id: str, db: Session = Depends(get_db)):
     if not db.get(House, house_id):
@@ -203,10 +287,11 @@ def list_assets(house_id: str, db: Session = Depends(get_db)):
 @app.get("/houses/{house_id}/state")
 def house_state(house_id: str, db: Session = Depends(get_db)):
     house = db.get(House, house_id) or not_found("House", house_id)
-    active_states = [state.value for state in IssueState if state not in {IssueState.CLOSED, IssueState.CANCELLED, IssueState.REJECTED, IssueState.DUPLICATE}]
     issues = db.scalars(select(Issue).where(Issue.house_id == house_id)).all()
     assets = db.scalars(select(Asset).where(Asset.house_id == house_id)).all()
+    zones = db.scalars(select(Zone).where(Zone.house_id == house_id)).all()
     initiatives = db.scalars(select(Initiative).where(Initiative.house_id == house_id, Initiative.state != InitiativeState.CLOSED.value)).all()
+    issue_cards, history_issues = house_state_issue_cards(issues, assets, zones)
     threshold = get_house_config(house_id).recurrence.count
     recent_signals = db.scalars(
         select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(40)
@@ -229,16 +314,28 @@ def house_state(house_id: str, db: Session = Depends(get_db)):
         )
         if len(signal_feed) >= 12:
             break
+    work_states = {IssueState.ACCEPTED.value, IssueState.WORK_IN_PROGRESS.value}
+    submitted_states = {IssueState.SUBMITTED.value}
+    confirmation_states = {IssueState.NEEDS_CONFIRMATION.value}
+    representative_states = {IssueState.ACTION_READY.value, IssueState.CONFIRMED.value}
+    verification_states = {IssueState.DONE_PENDING_VERIFICATION.value}
     return {
         "house": house_dict(house),
         "metrics": {
-            "active_issues": sum(item.state in active_states for item in issues),
-            "work_in_progress": sum(item.state == IssueState.WORK_IN_PROGRESS.value for item in issues),
-            "recurring_issues": sum(item.recurrence_count >= threshold for item in issues if item.state in active_states),
+            "active_issues": len(issue_cards),
+            # ACCEPTED means the management company has accepted the request
+            # and is processing it, even before an executor starts the order.
+            "work_in_progress": sum(item.get("state") in work_states for item in issue_cards),
+            "awaiting_confirmation": sum(item.get("state") in confirmation_states for item in issue_cards),
+            "awaiting_representative": sum(item.get("state") in representative_states for item in issue_cards),
+            "submitted_to_management": sum(item.get("state") in submitted_states for item in issue_cards),
+            "awaiting_verification": sum(item.get("state") in verification_states for item in issue_cards),
+            "recurring_issues": sum(item.get("recurrence_count", 0) >= threshold for item in issue_cards),
             "initiatives": len(initiatives),
         },
         "assets": [asset_dict(item, operational_state(db, item)) for item in assets],
-        "issues": [issue_dict(item) for item in sorted(issues, key=lambda item: item.last_seen_at, reverse=True)[:20]],
+        "issues": issue_cards,
+        "history_issues": history_issues,
         "initiatives": [initiative_dict(item) for item in initiatives],
         "recent_signals": signal_feed,
         "integration": {"max": max_adapter.mode, "external_submission": "SIMULATED"},

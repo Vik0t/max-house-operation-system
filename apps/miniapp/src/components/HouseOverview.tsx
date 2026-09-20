@@ -1,4 +1,5 @@
 import type { HouseState } from '../types'
+import { issueAssetLabel } from '../labels'
 import { StatusBadge } from './StatusBadge'
 
 type Props = {
@@ -11,6 +12,8 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
   const metrics = [
     ['Активные проблемы', state.metrics.active_issues],
     ['Работы', state.metrics.work_in_progress],
+    ['Ждут подтверждений', state.metrics.awaiting_confirmation || 0],
+    ['Ждут проверки', state.metrics.awaiting_verification || 0],
     ['Повторяются', state.metrics.recurring_issues],
     ['Инициативы', state.metrics.initiatives],
   ]
@@ -28,10 +31,10 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
       <section className="panel signal-panel">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">MAX · live input</p>
+            <p className="eyebrow">MAX · сообщения в реальном времени</p>
             <h2>Сигналы жителей</h2>
           </div>
-          <span className="live-indicator"><i /> {state.integration.max === 'REAL' ? 'бот подключён' : 'demo mode'}</span>
+          <span className="live-indicator"><i /> {state.integration.max === 'REAL' ? 'бот подключён' : 'демо-режим'}</span>
         </div>
         <div className="signal-feed">
           {state.recent_signals.length === 0 ? <p className="empty">Напишите боту о проблеме — сообщение появится здесь.</p> : null}
@@ -60,7 +63,7 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
       <section className="panel">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">House state graph</p>
+            <p className="eyebrow">Состояние объектов</p>
             <h2>Объекты дома</h2>
           </div>
           <span className="muted">{state.assets.length} объектов</span>
@@ -82,22 +85,33 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
       <section className="panel">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Operational memory</p>
-            <h2>Последние проблемы</h2>
+            <p className="eyebrow">Оперативная память дома</p>
+            <h2>Текущие проблемы</h2>
           </div>
         </div>
         <div className="issue-list">
-          {state.issues.length === 0 ? <p className="empty">Активных и исторических проблем пока нет.</p> : null}
+          {state.issues.length === 0 ? <p className="empty">Открытых проблем пока нет.</p> : null}
           {state.issues.slice(0, 8).map((issue) => (
             <button className="issue-row" key={issue.id} onClick={() => onIssue(issue.id)}>
               <span>
-                <strong>{issue.title}</strong>
-                <small>{issue.confirmations_count} подтверждений · {issue.recurrence_count}-й инцидент</small>
+                <strong>{issueAssetLabel(issue)}</strong>
+                <small>{issue.confirmations_count} подтверждений · {issue.recurrence_count}-й случай{issue.related_issue_count && issue.related_issue_count > 1 ? ` · ${issue.related_issue_count} сообщения объединены` : ''}</small>
               </span>
               <StatusBadge value={issue.state} />
             </button>
           ))}
         </div>
+        {state.history_issues?.length ? (
+          <div className="issue-list issue-list--history">
+            <div className="section-heading"><h3>Закрытые случаи</h3><span className="muted">История объектов</span></div>
+            {state.history_issues.slice(0, 6).map((issue) => (
+              <button className="issue-row" key={issue.id} onClick={() => onIssue(issue.id)}>
+                <span><strong>{issueAssetLabel(issue)}</strong><small>{issue.confirmations_count} подтверждений · {issue.recurrence_count}-й случай</small></span>
+                <StatusBadge value={issue.state} />
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
     </>
   )

@@ -51,6 +51,11 @@ export type Issue = {
   state: string
   confirmations_count: number
   recurrence_count: number
+  asset_name?: string | null
+  zone_name?: string | null
+  related_issue_count?: number
+  related_issue_ids?: string[]
+  signals_count?: number
   provenance: string
   first_seen_at: string
   actions?: Action[]
@@ -89,11 +94,16 @@ export type HouseState = {
   metrics: {
     active_issues: number
     work_in_progress: number
+    awaiting_confirmation?: number
+    awaiting_representative?: number
+    submitted_to_management?: number
+    awaiting_verification?: number
     recurring_issues: number
     initiatives: number
   }
   assets: Asset[]
   issues: Issue[]
+  history_issues?: Issue[]
   initiatives: Initiative[]
   recent_signals: Signal[]
   integration: { max: string; external_submission: string }

@@ -1,4 +1,5 @@
 import type { Issue } from '../types'
+import { issueTitle, provenanceLabel } from '../labels'
 import { StatusBadge } from './StatusBadge'
 
 type Props = {
@@ -17,7 +18,7 @@ function nextAction(issue: Issue): { action: string; label: string } | null {
   if (issue.state === 'ACCEPTED' && !order) return { action: 'create-order', label: 'Назначить мастера' }
   if (order?.status === 'ASSIGNED') return { action: 'start', label: 'Начать работу' }
   if (order?.status === 'REWORK_REQUIRED') return { action: 'restart', label: 'Начать доработку' }
-  if (order?.status === 'IN_PROGRESS' && order.evidence.length === 0) return { action: 'evidence', label: 'Добавить evidence' }
+  if (order?.status === 'IN_PROGRESS' && order.evidence.length === 0) return { action: 'evidence', label: 'Добавить фото выполнения' }
   if (order?.status === 'IN_PROGRESS' && order.evidence.length > 0) return { action: 'done', label: 'Завершить работу' }
   return null
 }
@@ -30,14 +31,14 @@ export function IssuePanel({ issue, busy, onAction, onClose, onShare }: Props) {
     <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="issue-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="icon-button" onClick={onClose} aria-label="Закрыть карточку">×</button>
-        <p className="eyebrow">Issue · Object memory</p>
-        <h2 id="issue-title">{issue.title}</h2>
-        <div className="badges"><StatusBadge value={issue.state} /><span className="provenance">AI inference</span></div>
+        <p className="eyebrow">Проблема · история объекта</p>
+        <h2 id="issue-title">{issueTitle(issue)}</h2>
+        <div className="badges"><StatusBadge value={issue.state} /><span className="provenance">Источник: {provenanceLabel(issue.provenance)}</span></div>
         <p className="lead">{issue.description}</p>
         <div className="facts">
           <div><strong>{issue.confirmations_count}</strong><span>жителей подтвердили</span></div>
           <div><strong>{issue.recurrence_count}</strong><span>событий за период</span></div>
-          <div><strong>{evidenceCount}</strong><span>evidence из сообщений</span></div>
+          <div><strong>{evidenceCount}</strong><span>фото и материалы</span></div>
         </div>
         {issue.recurrence_count >= 3 ? <div className="insight">↻ Повторяющаяся проблема: {issue.recurrence_count} события за 90 дней</div> : null}
         {issue.signals?.length ? (
@@ -55,17 +56,17 @@ export function IssuePanel({ issue, busy, onAction, onClose, onShare }: Props) {
         ) : null}
         {issue.actions?.at(-1) ? (
           <section className="detail-block">
-            <p className="eyebrow">Рекомендованное действие</p>
+            <p className="eyebrow">Рекомендованный маршрут</p>
             <strong>{issue.actions.at(-1)?.suggested_destination}</strong>
             <p>{issue.actions.at(-1)?.rationale}</p>
           </section>
         ) : null}
         {issue.submissions?.at(-1) ? (
-          <div className="honesty"><b>SIMULATED</b> Передача в УК показана через demo-adapter, не как официальная отправка.</div>
+          <div className="honesty"><b>ДЕМО</b> Передача в УК показана через демонстрационный канал, не как официальная отправка.</div>
         ) : null}
         {order ? (
           <section className="detail-block">
-            <p className="eyebrow">Work order</p>
+            <p className="eyebrow">Работа</p>
             <div className="row-between"><strong>{order.assignee_id}</strong><StatusBadge value={order.status} /></div>
             <p>{order.title}</p>
             {order.evidence.map((item) => <div className="evidence" key={item.id}>✓ {item.comment || item.type}</div>)}

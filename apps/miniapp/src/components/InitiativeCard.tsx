@@ -13,7 +13,7 @@ export function InitiativeCard({ initiative, busy, onVote, onHandoff }: Props) {
   return (
     <section className="panel initiative">
       <div className="section-heading">
-        <div><p className="eyebrow">Community to action</p><h2>{initiative.title}</h2></div>
+        <div><p className="eyebrow">Инициатива жителей</p><h2>{initiative.title}</h2></div>
         <StatusBadge value={initiative.state} />
       </div>
       <p>{initiative.summary}</p>
@@ -31,8 +31,7 @@ export function InitiativeCard({ initiative, busy, onVote, onHandoff }: Props) {
         })}
       </div>
       {initiative.state === 'INFORMAL_POLL' ? <button className="secondary" disabled={busy} onClick={onHandoff}>Зафиксировать результат</button> : null}
-      {initiative.state === 'FORMAL_HANDOFF_REQUIRED' ? <div className="honesty"><b>FORMAL HANDOFF REQUIRED</b> Опрос не является юридически значимым ОСС.</div> : null}
+      {initiative.state === 'FORMAL_HANDOFF_REQUIRED' ? <div className="honesty"><b>НУЖНА ОФИЦИАЛЬНАЯ ПЕРЕДАЧА</b> Опрос не является юридически значимым ОСС.</div> : null}
     </section>
   )
 }
-

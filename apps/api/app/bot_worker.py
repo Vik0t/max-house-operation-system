@@ -13,7 +13,12 @@ from .settings import Settings, get_settings
 
 
 LOGGER = logging.getLogger("dompuls.max_bot")
-HOUSE_COMMANDS = {"/house_a": "demo-house-a", "/house_b": "demo-house-b"}
+HOUSE_COMMANDS = {
+    "/house_a": "demo-house-a",
+    "/house_b": "demo-house-b",
+    "/дом_a": "demo-house-a",
+    "/дом_b": "demo-house-b",
+}
 HOUSE_LABELS = {
     "demo-house-a": "Дом А · Никольский, 12",
     "demo-house-b": "Дом Б · Центральная, 7",
@@ -57,6 +62,21 @@ INITIATIVE_STATE_LABELS = {
     "CLOSED": "Закрыта",
     "FORMAL_HANDOFF_REQUIRED": "Нужна официальная передача",
 }
+CATEGORY_LABELS = {
+    "elevator": "Лифт",
+    "lighting": "Освещение",
+    "water": "Вода и отопление",
+    "door": "Дверь и домофон",
+    "parking": "Парковка",
+    "other": "Другое",
+}
+PROVENANCE_LABELS = {
+    "OFFICIAL": "официальный источник",
+    "USER": "сообщение жителя",
+    "CALCULATED": "расчёт системы",
+    "AI_INFERENCE": "вывод ИИ, требует проверки",
+    "SYNTHETIC": "демонстрационные данные",
+}
 
 
 def state_label(value: str | None, labels: dict[str, str] = STATE_LABELS) -> str:
@@ -65,6 +85,58 @@ def state_label(value: str | None, labels: dict[str, str] = STATE_LABELS) -> str
 
 def house_label(house_id: str) -> str:
     return HOUSE_LABELS.get(house_id, house_id)
+
+
+def category_label(value: str | None) -> str:
+    raw = str(value or "").strip()
+    return CATEGORY_LABELS.get(raw.lower(), raw or "Другое")
+
+
+def provenance_label(value: str | None) -> str:
+    return PROVENANCE_LABELS.get(str(value or ""), "источник уточняется")
+
+
+def humanize_asset_name(value: str | None) -> str:
+    """Keep internal/config names out of user-facing MAX messages."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return "Объект уточняется"
+    replacements = {
+        "lighting": "Освещение",
+        "parking light": "Освещение парковки",
+        "house-a-lighting-2": "Освещение подъезда 2",
+    }
+    lowered = raw.lower()
+    if lowered in replacements:
+        return replacements[lowered]
+    if lowered.startswith("lighting"):
+        return "Освещение" + raw[len("lighting"):]
+    return raw
+
+
+def localized_issue_title(issue: dict[str, Any]) -> str:
+    title = str(issue.get("title") or "Проблема дома").strip()
+    if ":" not in title:
+        return humanize_asset_name(title)
+    prefix, suffix = title.split(":", 1)
+    if str(issue.get("category") or "").lower() in {"lighting", "water", "door"} and "лифт" in prefix.lower():
+        prefix = localized_asset_label(issue)
+    return f"{humanize_asset_name(prefix)}:{suffix}"
+
+
+def localized_asset_label(issue: dict[str, Any]) -> str:
+    asset = humanize_asset_name(issue.get("asset_name"))
+    category = str(issue.get("category") or "").lower()
+    # Older demo messages can contain a wrong asset hint (for example a
+    # lighting report attached to an elevator). Never show an impossible
+    # combination to a resident; preserve the issue for audit but use the
+    # category as the visible fallback until it is manually resolved.
+    if category == "lighting" and (asset == "Объект уточняется" or "лифт" in asset.lower() or asset.lower() == "lighting"):
+        return "Освещение"
+    if category == "elevator" and asset.lower().startswith("lighting"):
+        return "Лифт"
+    return asset
 
 
 def nav_row(*buttons: dict[str, Any]) -> list[list[dict[str, Any]]]:
@@ -139,6 +211,9 @@ class PollState:
     def role_for(self, conversation_key: str, user_id: str) -> str:
         role = (self.roles.get(conversation_key) or {}).get(str(user_id), "resident")
         return role if role in ROLE_LABELS else "resident"
+
+    def has_role(self, conversation_key: str, user_id: str) -> bool:
+        return str(user_id) in (self.roles.get(conversation_key) or {})
 
     def set_role(self, conversation_key: str, user_id: str, role: str) -> None:
         if role not in ROLE_LABELS:
@@ -341,10 +416,17 @@ def menu_keyboard() -> list[dict[str, Any]]:
                 {"type": "callback", "text": "Состояние дома", "payload": "menu:status"},
             ],
             [
+                {"type": "callback", "text": "Мои обращения", "payload": "menu:issues"},
+                {"type": "callback", "text": "Инициативы жителей", "payload": "menu:initiatives"},
+            ],
+            [
                 {"type": "callback", "text": "Предложить инициативу", "payload": "menu:initiative"},
                 {"type": "callback", "text": "Сменить дом", "payload": "menu:houses"},
             ],
-            [{"type": "callback", "text": "Моя рабочая роль", "payload": "menu:role"}],
+            [
+                {"type": "callback", "text": "Помощь", "payload": "menu:help"},
+                {"type": "callback", "text": "Моя рабочая роль", "payload": "menu:role"},
+            ],
         ]
     )
 
@@ -407,14 +489,36 @@ def role_keyboard() -> list[dict[str, Any]]:
     )
 
 
-def status_keyboard(status: dict[str, Any]) -> list[dict[str, Any]]:
+def issue_button_label(issue: dict[str, Any]) -> str:
+    asset = localized_asset_label(issue)
+    if asset == "Объект уточняется":
+        title = str(issue.get("title") or "Проблема дома")
+        asset = humanize_asset_name(title.split(":", 1)[0])
+    state = state_label(issue.get("state"))
+    confirmations = int(issue.get("confirmations_count") or 0)
+    related = int(issue.get("related_issue_count") or 1)
+    suffix = f" · {confirmations} подтвержд." if confirmations else ""
+    if related > 1:
+        suffix += f" · {related} сообщения объединены"
+    return f"{asset} · {state}{suffix}"[:128]
+
+
+def status_keyboard(status: dict[str, Any], role: str = "resident") -> list[dict[str, Any]]:
     rows: list[list[dict[str, Any]]] = []
-    for issue in status.get("issues") or []:
-        if issue.get("state") in {"CLOSED", "CANCELLED", "REJECTED", "DUPLICATE"}:
-            continue
-        rows.append([{"type": "callback", "text": f"Проблема: {issue.get('title', 'без названия')}"[:128], "payload": f"open_issue:{issue['id']}"}])
-    for initiative in status.get("initiatives") or []:
-        rows.append([{"type": "callback", "text": f"Инициатива: {initiative.get('title', 'без названия')}"[:128], "payload": f"open_initiative:{initiative['id']}"}])
+    active = [
+        issue
+        for issue in status.get("issues") or []
+        if issue.get("state") not in {"CLOSED", "CANCELLED", "REJECTED", "DUPLICATE"}
+    ]
+    attention_states = ROLE_ATTENTION_STATES.get(role, ROLE_ATTENTION_STATES["resident"])
+    active.sort(key=lambda item: (item.get("state") not in attention_states, item.get("last_seen_at") or ""))
+    for issue in active:
+        rows.append([{"type": "callback", "text": issue_button_label(issue), "payload": f"open_issue:{issue['id']}"}])
+    initiatives = status.get("initiatives") or []
+    if initiatives:
+        rows.append([{"type": "callback", "text": f"Инициативы жителей · {len(initiatives)}", "payload": "menu:initiatives"}])
+        for initiative in initiatives[:5]:
+            rows.append([{"type": "callback", "text": f"Инициатива · {initiative.get('title', 'без названия')}"[:128], "payload": f"open_initiative:{initiative['id']}"}])
     rows.append([{"type": "callback", "text": "Сообщить о проблеме", "payload": "menu:report"}])
     rows.append([menu_button()])
     return inline_keyboard(rows)
@@ -471,17 +575,17 @@ def route_keyboard(issue_id: str) -> list[dict[str, Any]]:
 
 def asset_label(issue: dict[str, Any]) -> str:
     if issue.get("asset_name"):
-        return str(issue["asset_name"])
+        return localized_asset_label(issue)
     title = str(issue.get("title") or "")
     if ":" in title:
-        return title.split(":", 1)[0]
+        return humanize_asset_name(title.split(":", 1)[0])
     asset_id = str(issue.get("asset_id") or "")
     if "elevator" in asset_id:
         suffix = asset_id.rsplit("-", 1)[-1]
         return f"Лифт №{suffix}" if suffix.isdigit() else "Лифт"
     if "lighting" in asset_id:
         return "Освещение"
-    return "объект уточняется"
+    return "Объект уточняется"
 
 
 def issue_keyboard(
@@ -588,7 +692,26 @@ def issue_next_step(issue: dict[str, Any]) -> str:
     return "Обновления будут отражаться в состоянии дома."
 
 
-def format_status(status: dict[str, Any]) -> str:
+STATUS_SECTIONS = (
+    ("NEEDS_CONFIRMATION", "Требуют подтверждений"),
+    ("ACTION_READY", "Требуют решения домоуправляющего"),
+    ("CONFIRMED", "Подтверждены и готовятся к передаче"),
+    ("SUBMITTED", "Переданы в управляющую компанию"),
+    ("ACCEPTED", "Приняты управляющей компанией"),
+    ("WORK_IN_PROGRESS", "В работе"),
+    ("DONE_PENDING_VERIFICATION", "Ждут проверки жителем"),
+    ("REOPENED", "Переоткрыты"),
+    ("DETECTED", "Требуют уточнения"),
+)
+ROLE_ATTENTION_STATES = {
+    "resident": {"NEEDS_CONFIRMATION", "DONE_PENDING_VERIFICATION", "REOPENED"},
+    "representative": {"NEEDS_CONFIRMATION", "CONFIRMED", "ACTION_READY", "REOPENED"},
+    "uk": {"SUBMITTED", "ACCEPTED", "WORK_IN_PROGRESS", "DONE_PENDING_VERIFICATION"},
+    "executor": {"ACCEPTED", "WORK_IN_PROGRESS"},
+}
+
+
+def format_status(status: dict[str, Any], role: str = "resident") -> str:
     house = status.get("house") or {}
     metrics = status.get("metrics") or {}
     active = [
@@ -596,15 +719,35 @@ def format_status(status: dict[str, Any]) -> str:
         for item in status.get("issues") or []
         if item.get("state") not in {"CLOSED", "CANCELLED", "REJECTED", "DUPLICATE"}
     ]
-    issue_lines = "\n".join(f"• {item.get('title')} — {state_label(item.get('state'))}" for item in active[:5]) or "• Активных проблем нет"
+    attention_states = ROLE_ATTENTION_STATES.get(role, ROLE_ATTENTION_STATES["resident"])
+    active.sort(key=lambda item: (item.get("state") not in attention_states, item.get("last_seen_at") or ""))
+    sections: list[str] = []
+    for state, heading in STATUS_SECTIONS:
+        items = [item for item in active if item.get("state") == state]
+        if not items:
+            continue
+        lines = "\n".join(f"• {issue_button_label(item)}" for item in items[:5])
+        sections.append(f"**{heading} ({len(items)})**\n{lines}")
+    if not sections:
+        sections.append("**Открытых проблем нет**\nДом сейчас не требует внимания.")
+
+    role_hint = {
+        "resident": "Ваши действия: подтвердить знакомую проблему или проверить завершённую работу.",
+        "representative": "Ваши действия: домоуправляющий проверяет подтверждения и принимает решение о передаче в УК.",
+        "uk": "Ваши действия: принять обращение, назначить работу и обновлять её состояние.",
+        "executor": "Ваши действия: открыть назначенную работу, добавить фото и завершить её.",
+    }.get(role, "Откройте проблему, чтобы увидеть доступное действие.")
     return (
         "**Состояние дома**\n"
         f"{house.get('address', 'Дом')}\n\n"
-        f"Активных проблем: {metrics.get('active_issues', 0)}\n"
+        f"Открытых проблем: {metrics.get('active_issues', 0)}\n"
         f"В работе: {metrics.get('work_in_progress', 0)}\n"
+        f"Ждут подтверждений: {metrics.get('awaiting_confirmation', 0)}\n"
+        f"Ждут проверки: {metrics.get('awaiting_verification', 0)}\n"
         f"Повторяющихся: {metrics.get('recurring_issues', 0)}\n"
         f"Инициатив жителей: {metrics.get('initiatives', 0)}\n\n"
-        f"Что требует внимания:\n{issue_lines}"
+        f"{role_hint}\n\n"
+        + "\n\n".join(sections)
     )
 
 
@@ -620,11 +763,14 @@ def format_result(result: dict[str, Any], miniapp_url: str) -> str:
         asset = asset_label(issue)
         lines = [
             f"**{heading}**",
-            f"{issue.get('title', 'Проблема дома')}",
+            localized_issue_title(issue),
             f"Объект: {asset}",
             f"Статус: {state_label(issue.get('state'))}",
             f"Подтверждений: {issue.get('confirmations_count', 0)}",
+            f"Источник: {provenance_label(issue.get('provenance'))}",
         ]
+        if issue.get("signals_count"):
+            lines.append(f"Сообщений объединено: {issue['signals_count']}")
         recurrence = issue.get("recurrence_count", 0)
         if recurrence:
             lines.append(f"Повторяемость: {recurrence} событий в истории")
@@ -646,9 +792,10 @@ def help_text(house_id: str, role: str = "resident") -> str:
         "«лифт опять встал во втором подъезде»\n\n"
         "Или инициативу:\n"
         "«на парковке нужен второй фонарь»\n\n"
-        f"Текущий дом: {house_label(house_id)} (код: {house_id})\n"
+        f"Текущий дом: {house_label(house_id)}\n"
         f"{role_text(role)}\n\n"
-        "Команды: /status, /house_a, /house_b, /menu, /back, /cancel, /help\n"
+        "Команды: /состояние, /меню, /назад, /отмена, /помощь\n"
+        "В демо дом можно сменить кнопкой «Сменить дом» или командами /дом_a и /дом_b.\n"
         "Действия разделены по ролям: житель → домоуправляющий → УК → исполнитель."
     )
 
@@ -709,8 +856,17 @@ async def handle_message(
         await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения относятся к этому дому.", menu_keyboard())
         return
     house_id = state.house_for(message)
-    if command in {"/start", "/help", "/menu"}:
-        await send_reply(adapter, message, help_text(house_id, current_role(state, message.conversation_key, message.user_id)), menu_keyboard())
+    if command in {"/start", "/help", "/menu", "/помощь", "/меню"}:
+        role = current_role(state, message.conversation_key, message.user_id)
+        if command == "/start" and not state.has_role(message.conversation_key, message.user_id):
+            await send_reply(
+                adapter,
+                message,
+                help_text(house_id, role) + "\n\nДля демо выберите рабочую роль — от неё зависят доступные действия.",
+                role_keyboard(),
+            )
+        else:
+            await send_reply(adapter, message, help_text(house_id, role), menu_keyboard())
         return
     if command in {"/back", "/назад"}:
         dialog = state.dialog(message.conversation_key)
@@ -722,7 +878,7 @@ async def handle_message(
             state.clear_dialog(message.conversation_key)
             await send_reply(adapter, message, "Главное меню:", menu_keyboard())
         return
-    if command == "/cancel":
+    if command in {"/cancel", "/отмена"}:
         state.clear_dialog(message.conversation_key)
         await send_reply(adapter, message, "Диалог отменён. Выберите действие:", menu_keyboard())
         return
@@ -767,9 +923,10 @@ async def handle_message(
         state.clear_dialog(message.conversation_key)
         await send_reply(adapter, message, format_initiative(initiative), initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id)))
         return
-    if command == "/status":
+    if command in {"/status", "/состояние"}:
         status = await api.house_status(house_id)
-        await send_reply(adapter, message, format_status(status), status_keyboard(status))
+        role = current_role(state, message.conversation_key, message.user_id)
+        await send_reply(adapter, message, format_status(status, role), status_keyboard(status, role))
         return
     result = await api.process_message(message, house_id)
     attachments = None
@@ -818,7 +975,19 @@ async def handle_callback(
         if value in {"status", "issues"}:
             house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
             status = await api.house_status(house_id)
-            await adapter.answer_callback(callback.callback_id, notification="Состояние обновлено", message=callback_message(callback, format_status(status), status_keyboard(status)))
+            await adapter.answer_callback(callback.callback_id, notification="Состояние обновлено", message=callback_message(callback, format_status(status, role), status_keyboard(status, role)))
+            return
+        if value == "initiatives":
+            house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
+            status = await api.house_status(house_id)
+            initiatives = status.get("initiatives") or []
+            text = "**Инициативы жителей**\n\n" + ("\n\n".join(format_initiative(item) for item in initiatives) if initiatives else "Пока нет открытых инициатив.")
+            rows = []
+            for initiative in initiatives[:8]:
+                rows.append([{"type": "callback", "text": f"Открыть · {initiative.get('title', 'Инициатива')}"[:128], "payload": f"open_initiative:{initiative['id']}"}])
+            rows.append([{ "type": "callback", "text": "Предложить инициативу", "payload": "menu:initiative" }])
+            rows.append([menu_button()])
+            await adapter.answer_callback(callback.callback_id, notification="Инициативы жителей", message=callback_message(callback, text, inline_keyboard(rows)))
             return
         if value == "role":
             await adapter.answer_callback(
@@ -859,7 +1028,7 @@ async def handle_callback(
         if value == "status":
             house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
             status = await api.house_status(house_id)
-            await adapter.answer_callback(callback.callback_id, notification="Вернулись к состоянию дома", message=callback_message(callback, format_status(status), status_keyboard(status)))
+            await adapter.answer_callback(callback.callback_id, notification="Вернулись к состоянию дома", message=callback_message(callback, format_status(status, role), status_keyboard(status, role)))
             return
         if state:
             state.clear_dialog(conversation_key)
