@@ -478,6 +478,68 @@ def read_signal(signal_id: str, db: Session = Depends(get_db)):
     return signal_dict(signal)
 
 
+@app.post("/signals/{signal_id}/resolve")
+def resolve_signal(signal_id: str, payload: ManualResolveRequest, db: Session = Depends(get_db)):
+    """Finish a signal after the AI fallback asked the user for context.
+
+    The original signal is reused instead of creating a second synthetic signal.
+    This keeps provenance, idempotency and the chat history intact while still
+    allowing the resident to choose the category/zone when confidence is low.
+    """
+    signal = db.get(Signal, signal_id) or not_found("Signal", signal_id)
+    zone = db.get(Zone, payload.zone_id)
+    if not zone or zone.house_id != signal.house_id:
+        raise HTTPException(status_code=409, detail="Zone does not belong to signal house")
+    asset = None
+    if payload.asset_id:
+        asset = db.get(Asset, payload.asset_id)
+        if not asset or asset.house_id != signal.house_id or asset.zone_id != zone.id:
+            raise HTTPException(status_code=409, detail="Asset does not belong to selected zone")
+    if not asset:
+        asset = db.scalar(
+            select(Asset)
+            .where(Asset.house_id == signal.house_id, Asset.zone_id == zone.id, Asset.type == payload.category)
+            .order_by(Asset.name)
+        )
+    if not asset:
+        asset = db.scalar(select(Asset).where(Asset.house_id == signal.house_id, Asset.zone_id == zone.id).order_by(Asset.name))
+    signal.ai_actionability_score = signal.ai_actionability_score or 0.5
+    candidate, score = find_duplicate(
+        db,
+        house_id=signal.house_id,
+        zone_id=zone.id,
+        asset_id=asset.id if asset else None,
+        category=payload.category,
+        text=signal.text,
+    )
+    if candidate and score >= 0.78:
+        candidate.confirmations_count += attach_signals(candidate, [signal])
+        candidate.last_seen_at = datetime.now(timezone.utc)
+        audit(db, "Issue", candidate.id, "MANUAL_SIGNAL_CLUSTERED", signal.author_id, details={"signal_id": signal.id, "score": score})
+        commit(db)
+        return {"signal": signal_dict(signal), "issue": issue_dict(candidate, detailed=True), "clustered": True, "resolved_manually": True}
+    recurrence = recurrence_count(db, signal.house_id, asset.id if asset else None, payload.category)
+    issue = Issue(
+        house_id=signal.house_id,
+        zone_id=zone.id,
+        asset_id=asset.id if asset else None,
+        category=payload.category,
+        symptom="unknown",
+        title=f"{asset.name if asset else payload.category.capitalize()}: проблема",
+        description=signal.text,
+        severity="high" if recurrence > 1 else "medium",
+        recurrence_count=recurrence,
+        signals=[signal],
+        confirmations_count=1,
+    )
+    db.add(issue)
+    db.flush()
+    transition_issue(db, issue, IssueState.NEEDS_CONFIRMATION, signal.author_id)
+    audit(db, "Issue", issue.id, "MANUAL_SIGNAL_RESOLVED", signal.author_id, details={"signal_id": signal.id})
+    commit(db)
+    return {"signal": signal_dict(signal), "issue": issue_dict(issue, detailed=True), "resolved_manually": True}
+
+
 @app.post("/signals/{signal_id}/resolve-duplicate")
 def resolve_duplicate(signal_id: str, payload: DuplicateResolutionRequest, db: Session = Depends(get_db)):
     signal = db.get(Signal, signal_id) or not_found("Signal", signal_id)

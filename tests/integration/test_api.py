@@ -98,6 +98,30 @@ def test_ai_timeout_returns_manual_fallback(client):
     assert response.json()["fallback"]["type"] == "MANUAL_CLASSIFICATION"
 
 
+def test_manual_resolution_reuses_original_signal(client):
+    response = client.post(
+        "/signals",
+        json={
+            "house_id": "demo-house-a",
+            "text": "сломался свет у входа",
+            "force_ai_failure": True,
+            "external_id": "manual-resolution-1",
+            "source_type": "max_message",
+        },
+    )
+    assert response.status_code == 201
+    signal_id = response.json()["signal"]["id"]
+    resolved = client.post(
+        f"/signals/{signal_id}/resolve",
+        json={"category": "lighting", "zone_id": "house-a-entrance-1"},
+    )
+    assert resolved.status_code == 200
+    body = resolved.json()
+    assert body["resolved_manually"] is True
+    assert body["issue"]["signals"][0]["id"] == signal_id
+    assert body["issue"]["zone_id"] == "house-a-entrance-1"
+
+
 def test_asset_resolution_does_not_cross_category_boundaries(client):
     response = client.post(
         "/signals",

@@ -76,6 +76,15 @@ def test_poll_state_registers_group_permissions(tmp_path):
     assert group["has_read_all_messages"] is True
 
 
+def test_poll_state_roles_are_per_user_and_persist(tmp_path):
+    path = tmp_path / "bot-state.json"
+    state = PollState(str(path), "demo-house-a")
+    state.set_role("chat:77", "42", "uk")
+    restored = PollState(str(path), "demo-house-a")
+    assert restored.role_for("chat:77", "42") == "uk"
+    assert restored.role_for("chat:77", "99") == "resident"
+
+
 def test_bot_response_exposes_real_domain_result():
     response = format_result(
         {
@@ -122,6 +131,19 @@ def test_issue_keyboard_exposes_real_lifecycle_actions():
         "dompuls_bot",
     )[0]["payload"]["buttons"]
     assert buttons[0][0]["payload"] == "order_evidence:issue-1"
+
+
+def test_issue_keyboard_hides_operator_actions_from_resident():
+    buttons = issue_keyboard({"id": "issue-1", "state": "ACTION_READY"}, "", "dompuls_bot", "resident")[0]["payload"]["buttons"]
+    payloads = {button["payload"] for row in buttons for button in row if button.get("type") == "callback"}
+    assert "issue_submit:issue-1" not in payloads
+    assert "menu:role" in payloads
+
+
+def test_issue_keyboard_shows_only_uk_action():
+    buttons = issue_keyboard({"id": "issue-1", "state": "SUBMITTED"}, "", "dompuls_bot", "uk")[0]["payload"]["buttons"]
+    payloads = {button["payload"] for row in buttons for button in row if button.get("type") == "callback"}
+    assert payloads == {"issue_accept:issue-1"}
 
 
 def test_menu_report_starts_persistent_dialog(tmp_path):

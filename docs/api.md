@@ -15,6 +15,7 @@ Interactive schema is available at `/docs`; OpenAPI JSON is at `/openapi.json`.
 
 - `POST /signals`
 - `GET /signals/{id}`
+- `POST /signals/{id}/resolve` — applies a user's category/zone clarification to the original Signal without creating a duplicate
 - `POST /signals/{id}/resolve-duplicate`
 - `GET /issues?house_id=...`
 - `GET /issues/{id}`
