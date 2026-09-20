@@ -1,217 +1,96 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { HouseOverview } from './components/HouseOverview'
 import { InitiativeCard } from './components/InitiativeCard'
 import { IssuePanel } from './components/IssuePanel'
+import { StatusBadge } from './components/StatusBadge'
 import { getMaxLaunchContext, notifyMax, shareIssue } from './maxBridge'
-import type { House, HouseState, Initiative, Issue, SignalResult } from './types'
+import type { House, HouseState, Issue, SignalResult, ViewerRole } from './types'
 
-const demoMessages = [
-  'лифт опять встал, второй подъезд',
-  'у меня тоже',
-  'вчера уже не работал лифт во втором подъезде',
-  'на парковке нужен второй фонарь',
+const roles: Array<{ id: ViewerRole; label: string; intro: string }> = [
+  { id: 'resident', label: 'Житель', intro: 'Сообщить о проблеме и проверить результат' },
+  { id: 'representative', label: 'Домоуправляющий', intro: 'Проверить сигналы и решить, что передать' },
+  { id: 'uk', label: 'УК / диспетчер', intro: 'Принять обращение и организовать работу' },
+  { id: 'executor', label: 'Исполнитель', intro: 'Выполнить назначенную работу и приложить фото' },
 ]
+const demoMessages = ['лифт опять встал, второй подъезд', 'на парковке нужен второй фонарь']
+
+function roleFromQuery(): ViewerRole {
+  const value = new URLSearchParams(window.location.search).get('role')
+  return roles.some((item) => item.id === value) ? value as ViewerRole : 'resident'
+}
+function roleLabel(role: ViewerRole) { return roles.find((item) => item.id === role)?.label || 'Житель' }
+function roleIntro(role: ViewerRole) { return roles.find((item) => item.id === role)?.intro || '' }
+
+function TaskCard({ issue, onOpen }: { issue: Issue & { next_action?: { id: string; label: string } }; onOpen: () => void }) {
+  return <button className="task-card" onClick={onOpen}>
+    <div className="task-card__top"><span className="task-dot" /><span>{issue.zone_name || 'Дом'} · {issue.asset_name || issue.category}</span></div>
+    <strong>{issue.title}</strong><p>{issue.description || 'Проблема зарегистрирована в доме.'}</p>
+    <div className="task-card__bottom"><span>{issue.confirmations_count || 0} подтверждений{issue.recurrence_count ? ` · ${issue.recurrence_count}-й случай` : ''}</span><b>{issue.next_action?.label || 'Открыть'} →</b></div>
+  </button>
+}
 
 export default function App() {
   const [launchContext] = useState(() => getMaxLaunchContext())
   const [houses, setHouses] = useState<House[]>([])
   const [houseId, setHouseId] = useState('demo-house-a')
+  const [role, setRole] = useState<ViewerRole>(() => roleFromQuery())
+  const viewerId = launchContext.unsafe?.user?.id || new URLSearchParams(window.location.search).get('viewer') || 'resident-seed-1'
   const [state, setState] = useState<HouseState | null>(null)
   const [issue, setIssue] = useState<Issue | null>(null)
-  const [message, setMessage] = useState(demoMessages[0])
+  const [message, setMessage] = useState('')
   const [fallback, setFallback] = useState<SignalResult['fallback']>()
   const [timeline, setTimeline] = useState<{ name: string; events: Array<Record<string, unknown>> } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [maxConnection, setMaxConnection] = useState<'CHECKING' | 'CONNECTED' | 'CONFIGURED' | 'SIMULATED'>('CHECKING')
-  const [fallbackSignalId, setFallbackSignalId] = useState<string | null>(null)
+  const [showReport, setShowReport] = useState(false)
+  const [showHouse, setShowHouse] = useState(false)
+  const [showDemo, setShowDemo] = useState(false)
   const [maxUserName, setMaxUserName] = useState<string | null>(launchContext.unsafe?.user?.first_name || null)
 
-  const refresh = useCallback(async () => {
-    const next = await api.state(houseId)
-    setState(next)
-  }, [houseId])
+  const refresh = useCallback(async () => { setState(await api.state(houseId, viewerId, role)) }, [houseId, role, viewerId])
+  useEffect(() => { Promise.all([api.houses(), api.state(houseId, viewerId, role)]).then(([houseList, houseState]) => { setHouses(houseList); setState(houseState) }).catch((reason: Error) => setError(reason.message)) }, [houseId, role, viewerId])
+  useEffect(() => { const timer = window.setInterval(() => { void refresh().catch(() => undefined); if (issue?.id) void api.issue(issue.id).then(setIssue).catch(() => undefined) }, 7_000); return () => window.clearInterval(timer) }, [issue?.id, refresh])
+  useEffect(() => { if (!launchContext.initData) return; api.validateMaxContext(launchContext.initData).then((context) => setMaxUserName(context.user?.first_name || null)).catch(() => setError('Не удалось подтвердить запуск в MAX. Откройте приложение из сообщения бота ещё раз.')) }, [launchContext.initData])
+  useEffect(() => { if (!launchContext.issueId) return; api.issue(launchContext.issueId).then(setIssue).catch(() => undefined) }, [launchContext.issueId])
 
-  useEffect(() => {
-    Promise.all([api.houses(), api.state(houseId)])
-      .then(([houseList, houseState]) => { setHouses(houseList); setState(houseState) })
-      .catch((reason: Error) => setError(reason.message))
-  }, [houseId])
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void refresh().catch(() => undefined)
-      if (issue?.id) void api.issue(issue.id).then(setIssue).catch(() => undefined)
-    }, 5_000)
-    return () => window.clearInterval(timer)
-  }, [issue?.id, refresh])
-
-  useEffect(() => {
-    const checkMax = () => api.maxStatus()
-      .then((result) => setMaxConnection(result.mode === 'SIMULATED' ? 'SIMULATED' : result.connected ? 'CONNECTED' : 'CONFIGURED'))
-      .catch(() => setMaxConnection('CONFIGURED'))
-    void checkMax()
-    const timer = window.setInterval(() => { void checkMax() }, 20_000)
-    return () => window.clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
-    if (!launchContext.initData) return
-    api.validateMaxContext(launchContext.initData)
-      .then((context) => setMaxUserName(context.user?.first_name || null))
-      .catch(() => setError('MAX не подтвердил контекст запуска. Откройте mini-app из бота ещё раз.'))
-  }, [launchContext.initData])
-
-  useEffect(() => {
-    if (!launchContext.issueId) return
-    api.issue(launchContext.issueId).then(setIssue).catch(() => undefined)
-  }, [launchContext.issueId])
-
-  async function perform(task: () => Promise<void>) {
-    setBusy(true)
-    setError(null)
-    try { await task() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Неизвестная ошибка') } finally { setBusy(false) }
-  }
-
-  function submitSignal(forceAiFailure = false, manualZoneId?: string) {
-    void perform(async () => {
-      const result = await api.signal(houseId, message, manualZoneId, forceAiFailure)
-      setFallback(result.fallback)
-      setFallbackSignalId(result.signal?.id || null)
-      if (result.issue) setIssue(await api.issue(result.issue.id))
-      if (result.initiative) setMessage('')
-      await refresh()
-    })
-  }
-
+  async function perform(task: () => Promise<void>) { setBusy(true); setError(null); try { await task() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось выполнить действие') } finally { setBusy(false) } }
+  function submitSignal(forceAiFailure = false) { void perform(async () => { const result = await api.signal(houseId, message, undefined, forceAiFailure); setFallback(result.fallback); if (result.issue) setIssue(await api.issue(result.issue.id)); setMessage(''); await refresh() }) }
   function runIssueAction(action: string) {
     if (!issue) return
     void perform(async () => {
       let nextIssue = issue
-      if (action === 'confirm') nextIssue = await api.confirm(issue.id)
+      if (action === 'confirm') nextIssue = role === 'resident' ? (await api.residentConfirm(issue.id, String(viewerId))).issue : await api.confirm(issue.id)
       if (action === 'submit') nextIssue = await api.submit(issue.id)
       if (action === 'accept') nextIssue = await api.accept(issue.id)
       if (action === 'create-order') { await api.createWorkOrder(issue.id); nextIssue = await api.issue(issue.id) }
       const order = issue.work_orders?.at(-1)
       if (action === 'start' && order) { await api.updateWorkOrder(order.id, 'IN_PROGRESS'); nextIssue = await api.issue(issue.id) }
-      if (action === 'restart' && order) { await api.updateWorkOrder(order.id, 'IN_PROGRESS'); nextIssue = await api.issue(issue.id) }
       if (action === 'evidence' && order) { await api.evidence(order.id); nextIssue = await api.issue(issue.id) }
       if (action === 'done' && order) { await api.updateWorkOrder(order.id, 'DONE'); nextIssue = await api.issue(issue.id) }
-      if (action === 'verify-yes') nextIssue = await api.verify(issue.id, 'confirmed')
-      if (action === 'verify-no') nextIssue = await api.verify(issue.id, 'rejected')
-      setIssue(nextIssue)
-      await refresh()
+      if (action === 'verify-yes') nextIssue = await api.verify(issue.id, 'confirmed', String(viewerId))
+      if (action === 'verify-no') nextIssue = await api.verify(issue.id, 'rejected', String(viewerId))
+      setIssue(nextIssue); await refresh()
     })
   }
+  function openIssue(id: string) { void perform(async () => setIssue(await api.issue(id))) }
+  function openAsset(id: string) { void perform(async () => { const result = await api.timeline(id); setTimeline({ name: result.asset.name, events: result.events }) }) }
+  function shareCurrentIssue() { if (issue) void perform(async () => { await shareIssue(issue.title, issue.id); notifyMax('success') }) }
 
-  function updateInitiative(task: () => Promise<Initiative>) {
-    void perform(async () => { await task(); await refresh() })
-  }
-
-  function resolveDuplicate(decision: 'LINK' | 'CREATE_NEW') {
-    const candidateId = fallback?.candidate?.id
-    if (!fallbackSignalId || !candidateId) return
-    void perform(async () => {
-      setIssue(await api.resolveDuplicate(fallbackSignalId, candidateId, decision))
-      setFallback(undefined)
-      setFallbackSignalId(null)
-      await refresh()
-    })
-  }
-
-  function openIssue(id: string) {
-    void perform(async () => setIssue(await api.issue(id)))
-  }
-
-  function openAsset(id: string) {
-    void perform(async () => {
-      const result = await api.timeline(id)
-      setTimeline({ name: result.asset.name, events: result.events })
-    })
-  }
-
-  function shareCurrentIssue() {
-    if (!issue) return
-    void perform(async () => {
-      await shareIssue(issue.title, issue.id)
-      notifyMax('success')
-    })
-  }
-
-  return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand"><span>ДП</span><div><strong>ДомПульс</strong><small>{maxUserName ? `${maxUserName}, состояние вашего дома` : 'операционная память дома'}</small></div></div>
-        <select aria-label="Выбрать дом" value={houseId} onChange={(event) => { setHouseId(event.target.value); setIssue(null); setTimeline(null) }}>
-          {houses.map((house) => <option key={house.id} value={house.id}>{house.address}</option>)}
-        </select>
-      </header>
-
-      <main>
-        <section className="hero">
-          <div>
-            <p className="eyebrow">Состояние дома · сейчас</p>
-            <h1>{state?.house.address || 'Загрузка дома…'}</h1>
-            <p>{state?.house.management_org}</p>
-          </div>
-          <div className="integration-badges">
-            <span className={maxConnection === 'CONNECTED' ? 'real' : maxConnection === 'SIMULATED' ? 'simulated' : 'configured'}>
-              MAX {maxConnection === 'CONNECTED' ? 'REAL · BOT ONLINE' : maxConnection === 'CHECKING' ? 'CHECKING' : maxConnection === 'SIMULATED' ? 'SIMULATED' : 'REAL · CONFIGURED'}
-            </span>
-            <span className="simulated">УК SIMULATED</span>
-          </div>
-        </section>
-
-        {error ? <div className="error" role="alert"><b>Не удалось выполнить действие.</b> {error}<button onClick={() => setError(null)}>×</button></div> : null}
-
-        <section className="composer panel">
-          <div><p className="eyebrow">MAX / Direct input</p><h2>Сообщение жителя</h2></div>
-          <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Опишите проблему обычными словами" />
-          <div className="chips">
-            {demoMessages.map((text) => <button key={text} onClick={() => setMessage(text)}>{text}</button>)}
-          </div>
-          <div className="button-row">
-            <button className="primary" disabled={busy || !message.trim()} onClick={() => submitSignal()}>{busy ? 'Разбираем…' : 'Отправить сигнал'}</button>
-            <button className="ghost" disabled={busy || !message.trim()} onClick={() => submitSignal(true)}>Проверить AI fallback</button>
-          </div>
-          {fallback ? (
-            <div className="fallback">
-              <strong>{fallback.message || 'Требуется выбор пользователя'}</strong>
-              {fallback.choices?.map((choice) => <button key={choice.id} onClick={() => submitSignal(false, choice.id)}>{choice.name}</button>)}
-              {fallback.type === 'DUPLICATE_CONFIRMATION' ? <button onClick={() => resolveDuplicate('LINK')}>Связать</button> : null}
-              {fallback.type === 'DUPLICATE_CONFIRMATION' ? <button onClick={() => resolveDuplicate('CREATE_NEW')}>Создать новую проблему</button> : null}
-            </div>
-          ) : null}
-        </section>
-
-        {state ? <HouseOverview state={state} onIssue={openIssue} onAsset={openAsset} /> : <div className="skeleton">Загружаем состояние дома…</div>}
-
-        {state?.initiatives.map((initiative) => (
-          <InitiativeCard
-            key={initiative.id}
-            initiative={initiative}
-            busy={busy}
-            onVote={(option) => updateInitiative(() => api.vote(initiative.id, `resident-${Date.now()}`, option))}
-            onHandoff={() => updateInitiative(() => api.handoff(initiative.id))}
-          />
-        ))}
-      </main>
-
-      {issue ? <IssuePanel issue={issue} busy={busy} onAction={runIssueAction} onClose={() => setIssue(null)} onShare={shareCurrentIssue} /> : null}
-      {timeline ? (
-        <div className="drawer-backdrop" role="presentation" onMouseDown={() => setTimeline(null)}>
-          <aside className="drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="icon-button" onClick={() => setTimeline(null)} aria-label="Закрыть timeline">×</button>
-            <p className="eyebrow">Asset timeline</p><h2>{timeline.name}</h2>
-            <div className="timeline">
-              {timeline.events.map((event, index) => (
-                <div key={`${String(event.id)}-${index}`}><i /><span><strong>{event.type === 'issue' ? event.title as string : 'Выполненная работа'}</strong><small>{String(event.state || event.status || '')}</small></span></div>
-              ))}
-            </div>
-          </aside>
-        </div>
-      ) : null}
-    </div>
-  )
+  const tasks = useMemo(() => state?.my_tasks || [], [state?.my_tasks])
+  const currentRole = roleLabel(role)
+  return <div className="app-shell">
+    <header className="topbar"><div className="brand"><span>ДП</span><div><strong>ДомПульс</strong><small>{maxUserName ? `${maxUserName}, ваш дом` : 'Ваши задачи по дому'}</small></div></div><div className="topbar-controls"><select aria-label="Выбрать дом" value={houseId} onChange={(event) => { setHouseId(event.target.value); setIssue(null); setTimeline(null) }}>{houses.map((house) => <option key={house.id} value={house.id}>{house.address}</option>)}</select><select aria-label="Выбрать роль для демонстрации" value={role} onChange={(event) => setRole(event.target.value as ViewerRole)}>{roles.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div></header>
+    <main>
+      <section className="hero hero--product"><div><p className="eyebrow">Ваша рабочая очередь</p><h1>{currentRole}</h1><p>{roleIntro(role)}</p><span className="role-note">{state?.house.address || 'Загрузка дома…'}{maxUserName ? ` · ${maxUserName}` : ''}</span></div><button className="secondary hero-action" onClick={() => setShowHouse((value) => !value)}>{showHouse ? 'Скрыть состояние дома' : 'Посмотреть состояние дома'}</button></section>
+      {error ? <div className="error" role="alert"><b>Не удалось выполнить действие.</b> {error}<button onClick={() => setError(null)}>×</button></div> : null}
+      <section className="task-section"><div className="section-heading"><div><p className="eyebrow">Следующий шаг</p><h2>{role === 'resident' ? 'Ваши обращения' : 'Требуют вашего внимания'}</h2></div><span className="muted">{tasks.length} задач</span></div>{!state ? <div className="skeleton">Загружаем задачи…</div> : tasks.length === 0 ? <div className="empty empty--product"><strong>Сейчас ничего не требует действий</strong><span>{role === 'resident' ? 'Если что-то случилось, сообщите об этом боту в MAX.' : 'Новые задачи появятся здесь автоматически.'}</span></div> : <div className="task-grid">{tasks.slice(0, 6).map((item) => <TaskCard key={item.id} issue={item} onOpen={() => openIssue(item.id)} />)}</div>}{role === 'resident' ? <button className="primary report-button" onClick={() => setShowReport((value) => !value)}>{showReport ? 'Закрыть форму' : 'Сообщить о проблеме'}</button> : null}</section>
+      {showReport ? <section className="panel report-panel"><div><p className="eyebrow">Новое обращение</p><h2>Что случилось?</h2><p className="muted">Опишите проблему своими словами. Если места не хватит, бот уточнит его в MAX.</p></div><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Например: в подъезде не горит лампочка" />{showDemo ? <div className="chips">{demoMessages.map((text) => <button key={text} onClick={() => setMessage(text)}>{text}</button>)}</div> : null}<div className="button-row"><button className="primary" disabled={busy || !message.trim()} onClick={() => submitSignal()}>{busy ? 'Сохраняем…' : 'Зарегистрировать'}</button><button className="ghost" onClick={() => setShowDemo((value) => !value)}>{showDemo ? 'Скрыть демо-инструменты' : 'Это демо'}</button></div>{fallback ? <div className="fallback"><strong>{fallback.message || 'Нужно уточнение'}</strong>{fallback.choices?.map((choice) => <button key={choice.id} onClick={() => setMessage(choice.name)}>{choice.name}</button>)}</div> : null}</section> : null}
+      {showHouse && state ? <div className="house-state"><HouseOverview state={state} onIssue={openIssue} onAsset={openAsset} /></div> : null}
+      {state?.initiatives.length ? <section className="initiative-section"><div className="section-heading"><div><p className="eyebrow">Общие решения жителей</p><h2>Инициативы</h2></div><span className="muted">{state.initiatives.length}</span></div>{state.initiatives.map((initiative) => <InitiativeCard key={initiative.id} initiative={initiative} busy={busy} onVote={(option) => void perform(async () => { await api.vote(initiative.id, String(viewerId), option); await refresh() })} onHandoff={() => void perform(async () => { await api.handoff(initiative.id); await refresh() })} />)}</section> : null}
+      <p className="demo-disclosure">Демонстрация: роль можно переключить сверху. В рабочем MAX она определяется правами пользователя.</p>
+    </main>
+    {issue ? <IssuePanel issue={issue} role={role} busy={busy} onAction={runIssueAction} onClose={() => setIssue(null)} onShare={shareCurrentIssue} /> : null}
+    {timeline ? <div className="drawer-backdrop" role="presentation" onMouseDown={() => setTimeline(null)}><aside className="drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button className="icon-button" onClick={() => setTimeline(null)} aria-label="Закрыть историю">×</button><p className="eyebrow">История объекта</p><h2>{timeline.name}</h2><div className="timeline">{timeline.events.map((event, index) => <div key={`${String(event.id)}-${index}`}><i /><span><strong>{event.type === 'issue' ? event.title as string : 'Выполненная работа'}</strong><small><StatusBadge value={String(event.state || event.status || 'UNKNOWN')} /></small></span></div>)}</div></aside></div> : null}
+  </div>
 }

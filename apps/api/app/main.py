@@ -278,6 +278,49 @@ def house_state_issue_cards(
     return cards, history[:20]
 
 
+ROLE_LABELS = {
+    "resident": "Житель",
+    "representative": "Домоуправляющий",
+    "uk": "УК / диспетчер",
+    "executor": "Исполнитель",
+}
+ROLE_TASK_STATES = {
+    "resident": {IssueState.NEEDS_CONFIRMATION.value, IssueState.DONE_PENDING_VERIFICATION.value, IssueState.REOPENED.value},
+    "representative": {IssueState.NEEDS_CONFIRMATION.value, IssueState.CONFIRMED.value, IssueState.ACTION_READY.value, IssueState.REOPENED.value},
+    "uk": {IssueState.SUBMITTED.value, IssueState.ACCEPTED.value, IssueState.WORK_IN_PROGRESS.value},
+    "executor": {IssueState.ACCEPTED.value, IssueState.WORK_IN_PROGRESS.value},
+}
+
+
+def role_task_action(issue: dict[str, Any], role: str) -> dict[str, str] | None:
+    """Return the one next action the current role should see.
+
+    This is intentionally server-side: the mini-app may hide controls for UX,
+    but the API remains the source of truth for the role's queue.
+    """
+    state = issue.get("state")
+    order = (issue.get("work_orders") or [])[-1:] if isinstance(issue.get("work_orders"), list) else []
+    order_status = order[0].get("status") if order else None
+    actions: dict[tuple[str, str], tuple[str, str]] = {
+        ("resident", IssueState.NEEDS_CONFIRMATION.value): ("confirm", "Подтвердить проблему"),
+        ("resident", IssueState.DONE_PENDING_VERIFICATION.value): ("verify", "Проверить результат"),
+        ("resident", IssueState.REOPENED.value): ("open", "Посмотреть переоткрытую проблему"),
+        ("representative", IssueState.NEEDS_CONFIRMATION.value): ("confirm", "Проверить подтверждения"),
+        ("representative", IssueState.CONFIRMED.value): ("route", "Выбрать маршрут"),
+        ("representative", IssueState.ACTION_READY.value): ("submit", "Передать в УК"),
+        ("representative", IssueState.REOPENED.value): ("review", "Проверить повторно"),
+        ("uk", IssueState.SUBMITTED.value): ("accept", "Принять обращение"),
+        ("uk", IssueState.ACCEPTED.value): ("assign", "Назначить исполнителя"),
+        ("uk", IssueState.WORK_IN_PROGRESS.value): ("track", "Открыть работу"),
+        ("executor", IssueState.ACCEPTED.value): ("start", "Начать работу"),
+        ("executor", IssueState.WORK_IN_PROGRESS.value): ("work", "Продолжить работу"),
+    }
+    if role == "executor" and state == IssueState.WORK_IN_PROGRESS.value and order_status == WorkOrderState.IN_PROGRESS.value:
+        return {"id": "work", "label": "Продолжить работу"}
+    selected = actions.get((role, str(state)))
+    return {"id": selected[0], "label": selected[1]} if selected else None
+
+
 @app.get("/houses/{house_id}/assets")
 def list_assets(house_id: str, db: Session = Depends(get_db)):
     if not db.get(House, house_id):
@@ -286,7 +329,12 @@ def list_assets(house_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/houses/{house_id}/state")
-def house_state(house_id: str, viewer_id: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db)):
+def house_state(
+    house_id: str,
+    viewer_id: str | None = Query(default=None, max_length=100),
+    role: str = Query(default="resident", pattern="^(resident|representative|uk|executor)$"),
+    db: Session = Depends(get_db),
+):
     house = db.get(House, house_id) or not_found("House", house_id)
     issues = db.scalars(select(Issue).where(Issue.house_id == house_id)).all()
     assets = db.scalars(select(Asset).where(Asset.house_id == house_id)).all()
@@ -300,6 +348,15 @@ def house_state(house_id: str, viewer_id: str | None = Query(default=None, max_l
     )
     for card in issue_cards:
         card.pop("related_signal_author_ids", None)
+    # Detailed issue payloads contain work orders; the compact House State
+    # cards do not. The queue action is still useful for role-aware navigation
+    # and is calculated from the current lifecycle state only.
+    task_pool = my_issue_cards if role == "resident" and viewer_id else issue_cards
+    my_tasks = []
+    for card in task_pool:
+        action = role_task_action(card, role)
+        if action:
+            my_tasks.append({**card, "next_action": action})
     threshold = get_house_config(house_id).recurrence.count
     recent_signals = db.scalars(
         select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(40)
@@ -344,6 +401,8 @@ def house_state(house_id: str, viewer_id: str | None = Query(default=None, max_l
         "assets": [asset_dict(item, operational_state(db, item)) for item in assets],
         "issues": issue_cards,
         "my_issues": my_issue_cards,
+        "viewer": {"id": viewer_id, "role": role, "role_label": ROLE_LABELS[role]},
+        "my_tasks": my_tasks[:12],
         "history_issues": history_issues,
         "initiatives": [initiative_dict(item) for item in initiatives],
         "recent_signals": signal_feed,

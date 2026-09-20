@@ -336,8 +336,10 @@ class DomPulsApi:
             json={"category": category, "zone_id": zone_id},
         )
 
-    async def house_status(self, house_id: str, viewer_id: str | None = None) -> dict[str, Any]:
-        params = {"viewer_id": viewer_id} if viewer_id else None
+    async def house_status(self, house_id: str, viewer_id: str | None = None, role: str = "resident") -> dict[str, Any]:
+        params = {"role": role}
+        if viewer_id:
+            params["viewer_id"] = viewer_id
         return await self.request("GET", f"/houses/{house_id}/state", params=params)
 
     async def create_initiative(self, house_id: str, title: str, summary: str) -> dict[str, Any]:
@@ -409,27 +411,35 @@ def inline_keyboard(buttons: list[list[dict[str, Any]]]) -> list[dict[str, Any]]
     return [{"type": "inline_keyboard", "payload": {"buttons": buttons}}]
 
 
-def menu_keyboard() -> list[dict[str, Any]]:
-    return inline_keyboard(
-        [
-            [
-                {"type": "callback", "text": "Сообщить о проблеме", "payload": "menu:report"},
-                {"type": "callback", "text": "Состояние дома", "payload": "menu:status"},
-            ],
-            [
-                {"type": "callback", "text": "Мои обращения", "payload": "menu:issues"},
-                {"type": "callback", "text": "Инициативы жителей", "payload": "menu:initiatives"},
-            ],
-            [
-                {"type": "callback", "text": "Предложить инициативу", "payload": "menu:initiative"},
-                {"type": "callback", "text": "Сменить дом", "payload": "menu:houses"},
-            ],
-            [
-                {"type": "callback", "text": "Помощь", "payload": "menu:help"},
-                {"type": "callback", "text": "Моя рабочая роль", "payload": "menu:role"},
-            ],
-        ]
-    )
+def menu_keyboard(role: str = "resident") -> list[dict[str, Any]]:
+    """Role-specific home menu; the bot should feel like a different product per role."""
+    primary = {
+        "resident": [
+            [{"type": "callback", "text": "Сообщить о проблеме", "payload": "menu:report"}],
+            [{"type": "callback", "text": "Мои обращения", "payload": "menu:issues"}, {"type": "callback", "text": "Проверить результат", "payload": "menu:queue"}],
+        ],
+        "representative": [
+            [{"type": "callback", "text": "Требуют моего решения", "payload": "menu:queue"}],
+            [{"type": "callback", "text": "Повторяющиеся проблемы", "payload": "menu:status"}, {"type": "callback", "text": "Инициативы", "payload": "menu:initiatives"}],
+        ],
+        "uk": [
+            [{"type": "callback", "text": "Новые обращения", "payload": "menu:queue"}],
+            [{"type": "callback", "text": "В работе", "payload": "menu:status"}, {"type": "callback", "text": "Ждут проверки", "payload": "menu:verify"}],
+        ],
+        "executor": [
+            [{"type": "callback", "text": "Мои работы", "payload": "menu:queue"}],
+            [{"type": "callback", "text": "Завершённые работы", "payload": "menu:status"}],
+        ],
+    }.get(role, [])
+    common = [
+        [{"type": "callback", "text": "Состояние дома", "payload": "menu:status"}, {"type": "callback", "text": "Сменить дом", "payload": "menu:houses"}],
+        [{"type": "callback", "text": "Помощь", "payload": "menu:help"}, {"type": "callback", "text": "Моя рабочая роль", "payload": "menu:role"}],
+    ]
+    if role in {"resident", "representative"}:
+        common.insert(1, [{"type": "callback", "text": "Инициативы жителей", "payload": "menu:initiatives"}])
+    if role == "resident":
+        common.insert(2, [{"type": "callback", "text": "Предложить инициативу", "payload": "menu:initiative"}])
+    return inline_keyboard(primary + common)
 
 
 def cancel_keyboard() -> list[dict[str, Any]]:
@@ -504,7 +514,7 @@ def issue_button_label(issue: dict[str, Any]) -> str:
     return f"{asset} · {state}{suffix}"[:128]
 
 
-def status_keyboard(status: dict[str, Any], role: str = "resident") -> list[dict[str, Any]]:
+def status_keyboard(status: dict[str, Any], role: str = "resident", queue_only: bool = False) -> list[dict[str, Any]]:
     rows: list[list[dict[str, Any]]] = []
     active = [
         issue
@@ -512,6 +522,8 @@ def status_keyboard(status: dict[str, Any], role: str = "resident") -> list[dict
         if issue.get("state") not in {"CLOSED", "CANCELLED", "REJECTED", "DUPLICATE"}
     ]
     attention_states = ROLE_ATTENTION_STATES.get(role, ROLE_ATTENTION_STATES["resident"])
+    if queue_only:
+        active = [issue for issue in active if issue.get("state") in attention_states]
     active.sort(key=lambda item: (item.get("state") not in attention_states, item.get("last_seen_at") or ""))
     for issue in active:
         rows.append([{"type": "callback", "text": issue_button_label(issue), "payload": f"open_issue:{issue['id']}"}])
@@ -520,7 +532,8 @@ def status_keyboard(status: dict[str, Any], role: str = "resident") -> list[dict
         rows.append([{"type": "callback", "text": f"Инициативы жителей · {len(initiatives)}", "payload": "menu:initiatives"}])
         for initiative in initiatives[:5]:
             rows.append([{"type": "callback", "text": f"Инициатива · {initiative.get('title', 'без названия')}"[:128], "payload": f"open_initiative:{initiative['id']}"}])
-    rows.append([{"type": "callback", "text": "Сообщить о проблеме", "payload": "menu:report"}])
+    if not queue_only and role in {"resident", "representative"}:
+        rows.append([{"type": "callback", "text": "Сообщить о проблеме", "payload": "menu:report"}])
     rows.append([menu_button()])
     return inline_keyboard(rows)
 
@@ -854,7 +867,7 @@ async def handle_message(
     if command in HOUSE_COMMANDS:
         house_id = HOUSE_COMMANDS[command]
         state.set_house(message, house_id)
-        await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения относятся к этому дому.", menu_keyboard())
+        await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения относятся к этому дому.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)))
         return
     house_id = state.house_for(message)
     if command in {"/start", "/help", "/menu", "/помощь", "/меню"}:
@@ -867,7 +880,7 @@ async def handle_message(
                 role_keyboard(),
             )
         else:
-            await send_reply(adapter, message, help_text(house_id, role), menu_keyboard())
+            await send_reply(adapter, message, help_text(house_id, role), menu_keyboard(role))
         return
     if command in {"/back", "/назад"}:
         dialog = state.dialog(message.conversation_key)
@@ -877,11 +890,11 @@ async def handle_message(
             await send_reply(adapter, message, "Вернулись к выбору категории:", category_keyboard())
         else:
             state.clear_dialog(message.conversation_key)
-            await send_reply(adapter, message, "Главное меню:", menu_keyboard())
+            await send_reply(adapter, message, "Главное меню:", menu_keyboard(current_role(state, message.conversation_key, message.user_id)))
         return
     if command in {"/cancel", "/отмена"}:
         state.clear_dialog(message.conversation_key)
-        await send_reply(adapter, message, "Диалог отменён. Выберите действие:", menu_keyboard())
+        await send_reply(adapter, message, "Диалог отменён. Выберите действие:", menu_keyboard(current_role(state, message.conversation_key, message.user_id)))
         return
     dialog = state.dialog(message.conversation_key)
     if dialog and dialog.get("mode") == "report_text":
@@ -986,8 +999,21 @@ async def handle_callback(
             return
         if value == "status":
             house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
-            status = await api.house_status(house_id)
+            status = await api.house_status(house_id, role=role)
             await adapter.answer_callback(callback.callback_id, notification="Состояние обновлено", message=callback_message(callback, format_status(status, role), status_keyboard(status, role)))
+            return
+        if value in {"queue", "verify"}:
+            house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
+            status = await api.house_status(house_id, viewer_id=callback.user_id if role == "resident" else None, role=role)
+            if value == "verify":
+                status = {**status, "issues": [item for item in status.get("issues", []) if item.get("state") == "DONE_PENDING_VERIFICATION"]}
+            queue_status = {**status, "metrics": {**(status.get("metrics") or {}), "active_issues": len(status.get("issues") or [])}}
+            heading = {"resident": "Проверить результат", "representative": "Требуют решения", "uk": "Новые задачи", "executor": "Мои работы"}.get(role, "Мои задачи")
+            await adapter.answer_callback(
+                callback.callback_id,
+                notification=heading,
+                message=callback_message(callback, format_status(queue_status, role, heading), status_keyboard(queue_status, role, queue_only=True)),
+            )
             return
         if value == "initiatives":
             house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
@@ -1010,11 +1036,11 @@ async def handle_callback(
             return
         if value == "help":
             house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
-            await adapter.answer_callback(callback.callback_id, notification="Подсказка", message=callback_message(callback, help_text(house_id, role), menu_keyboard()))
+            await adapter.answer_callback(callback.callback_id, notification="Подсказка", message=callback_message(callback, help_text(house_id, role), menu_keyboard(role)))
             return
         if value == "cancel":
             state and state.clear_dialog(conversation_key)
-            await adapter.answer_callback(callback.callback_id, notification="Диалог отменён", message=callback_message(callback, "Выберите следующее действие:", menu_keyboard()))
+            await adapter.answer_callback(callback.callback_id, notification="Диалог отменён", message=callback_message(callback, "Выберите следующее действие:", menu_keyboard(role)))
             return
     if action == "role":
         if state:
@@ -1023,7 +1049,7 @@ async def handle_callback(
         await adapter.answer_callback(
             callback.callback_id,
             notification=f"Роль: {ROLE_LABELS[selected]}",
-            message=callback_message(callback, f"{role_text(selected)}\n\nТеперь бот покажет только действия этой роли. Житель сообщает и проверяет результат; домоуправляющий передаёт; УК принимает и назначает; исполнитель выполняет работу.", menu_keyboard()),
+            message=callback_message(callback, f"{role_text(selected)}\n\nТеперь бот покажет только вашу очередь задач. Житель подтверждает и проверяет результат; домоуправляющий принимает решение о передаче; УК назначает работу; исполнитель выполняет её.", menu_keyboard(selected)),
         )
         return
     if action == "back":
@@ -1044,7 +1070,7 @@ async def handle_callback(
             return
         if state:
             state.clear_dialog(conversation_key)
-        await adapter.answer_callback(callback.callback_id, notification="Главное меню", message=callback_message(callback, "Выберите действие:", menu_keyboard()))
+        await adapter.answer_callback(callback.callback_id, notification="Главное меню", message=callback_message(callback, "Выберите действие:", menu_keyboard(role)))
         return
     required_role = {
         "confirm_issue": "resident",
@@ -1065,13 +1091,13 @@ async def handle_callback(
         await adapter.answer_callback(
             callback.callback_id,
             notification=f"Нужна роль: {ROLE_LABELS[required_role]}",
-            message=callback_message(callback, role_denied_text(required_role), menu_keyboard()),
+            message=callback_message(callback, role_denied_text(required_role), menu_keyboard(role)),
         )
         return
     if action == "house":
         if state:
             state.set_house_key(conversation_key, value)
-        await adapter.answer_callback(callback.callback_id, notification="Дом выбран", message=callback_message(callback, f"Дом переключён: {house_label(value)}\n\nТеперь сообщения в этом чате относятся к выбранному дому.", menu_keyboard()))
+        await adapter.answer_callback(callback.callback_id, notification="Дом выбран", message=callback_message(callback, f"Дом переключён: {house_label(value)}\n\nТеперь сообщения в этом чате относятся к выбранному дому.", menu_keyboard(role)))
         return
     if action == "category":
         if not state or not state.dialog(conversation_key) or state.dialog(conversation_key).get("mode") != "report_category":
@@ -1108,7 +1134,7 @@ async def handle_callback(
         issue = result.get("issue")
         if issue:
             state.watch_issue(message, issue)
-        attachments = issue_keyboard(issue, miniapp_url, bot_username, role) if issue else menu_keyboard()
+        attachments = issue_keyboard(issue, miniapp_url, bot_username, role) if issue else menu_keyboard(role)
         await adapter.answer_callback(callback.callback_id, notification="Сигнал обработан", message=callback_message(callback, format_result(result, miniapp_url), attachments))
         return
     if action == "open_issue":

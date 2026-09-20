@@ -104,11 +104,15 @@ export type HouseState = {
   assets: Asset[]
   issues: Issue[]
   my_issues?: Issue[]
+  viewer?: { id?: string | null; role: ViewerRole; role_label: string }
+  my_tasks?: Array<Issue & { next_action?: { id: string; label: string } }>
   history_issues?: Issue[]
   initiatives: Initiative[]
   recent_signals: Signal[]
   integration: { max: string; external_submission: string }
 }
+
+export type ViewerRole = 'resident' | 'representative' | 'uk' | 'executor'
 
 export type SignalResult = {
   signal?: { id: string }

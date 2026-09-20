@@ -13,6 +13,16 @@ def test_house_state_can_scope_my_issues_without_exposing_author_ids(client):
     assert all("related_signal_author_ids" not in item for item in state["issues"])
 
 
+def test_house_state_exposes_role_specific_task_queue(client):
+    resident = client.get("/houses/demo-house-a/state", params={"viewer_id": "resident-seed-1", "role": "resident"}).json()
+    representative = client.get("/houses/demo-house-a/state", params={"role": "representative"}).json()
+    uk = client.get("/houses/demo-house-a/state", params={"role": "uk"}).json()
+    assert resident["viewer"]["role"] == "resident"
+    assert all(item["state"] in {"NEEDS_CONFIRMATION", "DONE_PENDING_VERIFICATION", "REOPENED"} for item in resident["my_tasks"])
+    assert all(item["next_action"]["label"] for item in representative["my_tasks"])
+    assert all(item["state"] in {"SUBMITTED", "ACCEPTED", "WORK_IN_PROGRESS"} for item in uk["my_tasks"])
+
+
 def test_signal_clusters_by_house_zone_asset(client):
     result = client.post("/signals", json={"house_id": "demo-house-a", "text": "лифт опять встал во втором подъезде", "author_id": "r6"})
     assert result.status_code == 201

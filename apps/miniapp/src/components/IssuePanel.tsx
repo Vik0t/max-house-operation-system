@@ -1,37 +1,39 @@
-import type { Issue } from '../types'
+import type { Issue, ViewerRole } from '../types'
 import { issueTitle, provenanceLabel } from '../labels'
 import { StatusBadge } from './StatusBadge'
 
 type Props = {
   issue: Issue
+  role: ViewerRole
   busy: boolean
   onAction: (action: string) => void
   onClose: () => void
   onShare: () => void
 }
 
-function nextAction(issue: Issue): { action: string; label: string } | null {
+function nextAction(issue: Issue, role: ViewerRole): { action: string; label: string } | null {
   const order = issue.work_orders?.at(-1)
-  if (issue.state === 'NEEDS_CONFIRMATION') return { action: 'confirm', label: 'Подтвердить проблему' }
-  if (issue.state === 'ACTION_READY') return { action: 'submit', label: 'Передать ответственному' }
-  if (issue.state === 'SUBMITTED') return { action: 'accept', label: 'Принять от имени УК' }
-  if (issue.state === 'ACCEPTED' && !order) return { action: 'create-order', label: 'Назначить мастера' }
-  if (order?.status === 'ASSIGNED') return { action: 'start', label: 'Начать работу' }
-  if (order?.status === 'REWORK_REQUIRED') return { action: 'restart', label: 'Начать доработку' }
-  if (order?.status === 'IN_PROGRESS' && order.evidence.length === 0) return { action: 'evidence', label: 'Добавить фото выполнения' }
-  if (order?.status === 'IN_PROGRESS' && order.evidence.length > 0) return { action: 'done', label: 'Завершить работу' }
+  if (role === 'resident' && issue.state === 'NEEDS_CONFIRMATION') return { action: 'confirm', label: 'У меня тоже' }
+  if (role === 'representative' && issue.state === 'NEEDS_CONFIRMATION') return { action: 'confirm', label: 'Подтвердить проблему' }
+  if (role === 'representative' && issue.state === 'ACTION_READY') return { action: 'submit', label: 'Передать в УК' }
+  if (role === 'uk' && issue.state === 'SUBMITTED') return { action: 'accept', label: 'Принять обращение' }
+  if (role === 'uk' && issue.state === 'ACCEPTED' && !order) return { action: 'create-order', label: 'Назначить исполнителя' }
+  if (role === 'executor' && order?.status === 'ASSIGNED') return { action: 'start', label: 'Начать работу' }
+  if (role === 'executor' && order?.status === 'REWORK_REQUIRED') return { action: 'restart', label: 'Начать доработку' }
+  if (role === 'executor' && order?.status === 'IN_PROGRESS' && order.evidence.length === 0) return { action: 'evidence', label: 'Добавить фото выполнения' }
+  if (role === 'executor' && order?.status === 'IN_PROGRESS' && order.evidence.length > 0) return { action: 'done', label: 'Завершить работу' }
   return null
 }
 
-export function IssuePanel({ issue, busy, onAction, onClose, onShare }: Props) {
-  const next = nextAction(issue)
+export function IssuePanel({ issue, role, busy, onAction, onClose, onShare }: Props) {
+  const next = nextAction(issue, role)
   const order = issue.work_orders?.at(-1)
   const evidenceCount = issue.signals?.reduce((sum, signal) => sum + signal.attachments.length, 0) || 0
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="issue-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="icon-button" onClick={onClose} aria-label="Закрыть карточку">×</button>
-        <p className="eyebrow">Проблема · история объекта</p>
+        <p className="eyebrow">Проблема · {role === 'resident' ? 'ваше обращение' : 'ваша рабочая задача'}</p>
         <h2 id="issue-title">{issueTitle(issue)}</h2>
         <div className="badges"><StatusBadge value={issue.state} /><span className="provenance">Источник: {provenanceLabel(issue.provenance)}</span></div>
         <p className="lead">{issue.description}</p>
@@ -74,7 +76,7 @@ export function IssuePanel({ issue, busy, onAction, onClose, onShare }: Props) {
         ) : null}
         {next ? <button className="primary full" disabled={busy} onClick={() => onAction(next.action)}>{busy ? 'Выполняется…' : next.label}</button> : null}
         <button className="secondary full" disabled={busy} onClick={onShare}>Поделиться в MAX</button>
-        {issue.state === 'DONE_PENDING_VERIFICATION' ? (
+        {role === 'resident' && issue.state === 'DONE_PENDING_VERIFICATION' ? (
           <div className="verification">
             <h3>Проблема устранена?</h3>
             <div className="button-row">

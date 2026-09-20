@@ -1,4 +1,4 @@
-import type { House, HouseState, Initiative, Issue, SignalResult, WorkOrder } from './types'
+import type { House, HouseState, Initiative, Issue, SignalResult, ViewerRole, WorkOrder } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -16,7 +16,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   houses: () => request<House[]>('/houses'),
-  state: (houseId: string) => request<HouseState>(`/houses/${houseId}/state`),
+  state: (houseId: string, viewerId?: string | number, role: ViewerRole = 'resident') => {
+    const params = new URLSearchParams({ role })
+    if (viewerId) params.set('viewer_id', String(viewerId))
+    return request<HouseState>(`/houses/${houseId}/state?${params.toString()}`)
+  },
   issue: (issueId: string) => request<Issue>(`/issues/${issueId}`),
   signal: (houseId: string, text: string, manualZoneId?: string, forceAiFailure = false) =>
     request<SignalResult>('/signals', {
@@ -34,6 +38,7 @@ export const api = {
     body: JSON.stringify({ init_data: initData }),
   }),
   confirm: (issueId: string) => request<Issue>(`/issues/${issueId}/confirm`, { method: 'POST', body: '{}' }),
+  residentConfirm: (issueId: string, actorId: string) => request<{ issue: Issue }>(`/issues/${issueId}/resident-confirm`, { method: 'POST', body: JSON.stringify({ actor_id: actorId }) }),
   submit: (issueId: string) => request<Issue>(`/issues/${issueId}/submit`, { method: 'POST', body: '{}' }),
   accept: (issueId: string) => request<Issue>(`/issues/${issueId}/accept`, { method: 'POST', body: '{}' }),
   createWorkOrder: (issueId: string) =>
@@ -45,8 +50,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ type: 'after_photo', uri: '/demo/elevator-after.svg', comment: 'Контрольный запуск выполнен, кабина работает штатно.' }),
     }),
-  verify: (issueId: string, result: 'confirmed' | 'rejected') =>
-    request<Issue>(`/issues/${issueId}/verify`, { method: 'POST', body: JSON.stringify({ result }) }),
+  verify: (issueId: string, result: 'confirmed' | 'rejected', verifierId = 'resident-seed-1') =>
+    request<Issue>(`/issues/${issueId}/verify`, { method: 'POST', body: JSON.stringify({ result, verifier_type: 'resident', verifier_id: verifierId }) }),
   vote: (initiativeId: string, voterId: string, option: string) =>
     request<Initiative>(`/initiatives/${initiativeId}/poll`, { method: 'POST', body: JSON.stringify({ voter_id: voterId, option }) }),
   handoff: (initiativeId: string) =>

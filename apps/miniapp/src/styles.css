@@ -23,11 +23,34 @@ button:disabled { cursor: wait; opacity: .55; }
 .brand > span { display: grid; place-items: center; width: 38px; height: 38px; color: white; background: var(--ink); border-radius: 12px; font-weight: 800; }
 .brand div { display: flex; flex-direction: column; line-height: 1.2; }
 .brand small { color: var(--muted); font-size: 11px; }
-.topbar select { max-width: 430px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: white; color: var(--ink); }
+.topbar-controls { display: flex; gap: 8px; align-items: center; }
+.topbar select { max-width: 280px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: white; color: var(--ink); }
 main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; padding: 42px 0 100px; }
 .hero { display: flex; justify-content: space-between; gap: 28px; align-items: end; margin-bottom: 26px; }
 .hero h1 { font-size: clamp(30px, 5vw, 55px); letter-spacing: -.05em; margin: 5px 0 8px; max-width: 780px; line-height: 1.03; }
 .hero p { margin: 0; color: var(--muted); }
+.hero--product { align-items: center; }
+.hero-action { white-space: nowrap; }
+.role-note { display: inline-block; margin-top: 16px; color: var(--muted); font-size: 12px; }
+.task-section { margin-bottom: 22px; }
+.task-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.task-card { appearance: none; border: 1px solid var(--line); background: rgba(251,252,248,.94); border-radius: 18px; padding: 19px; text-align: left; color: var(--ink); box-shadow: 0 12px 35px rgba(39,63,55,.05); transition: transform .15s, border-color .15s; }
+.task-card:hover { border-color: #91aa9c; transform: translateY(-2px); }
+.task-card__top { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; margin-bottom: 16px; }
+.task-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 0 4px rgba(226,123,75,.14); }
+.task-card strong { display: block; font-size: 18px; line-height: 1.25; }
+.task-card p { color: var(--muted); font-size: 12px; line-height: 1.45; min-height: 35px; }
+.task-card__bottom { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-top: 18px; font-size: 11px; color: var(--muted); }
+.task-card__bottom b { color: var(--green); white-space: nowrap; }
+.report-button { margin-top: 14px; }
+.report-panel { display: grid; grid-template-columns: 230px 1fr; gap: 14px 24px; align-items: start; }
+.report-panel textarea { min-height: 100px; resize: vertical; width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; background: white; color: var(--ink); outline: none; }
+.report-panel .chips, .report-panel .button-row, .report-panel .fallback { grid-column: 2; }
+.empty--product { display: flex; flex-direction: column; gap: 7px; align-items: center; min-height: 150px; justify-content: center; background: rgba(251,252,248,.7); border: 1px dashed var(--line); border-radius: 18px; }
+.empty--product strong { font-size: 16px; color: var(--ink); }
+.initiative-section { margin-top: 28px; }
+.house-state { margin-top: 20px; }
+.demo-disclosure { color: var(--muted); font-size: 11px; text-align: center; margin: 30px 0 0; }
 .eyebrow { color: var(--green) !important; text-transform: uppercase; letter-spacing: .13em; font-size: 11px; font-weight: 800; margin: 0 0 7px !important; }
 .integration-badges { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .integration-badges span, .provenance { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 7px 9px; border-radius: 8px; }
@@ -125,7 +148,8 @@ button.signal-message:hover { border-color: #91aa9c; transform: translateY(-1px)
 @media (max-width: 760px) {
   .topbar { padding: 0 16px; height: auto; min-height: 70px; gap: 12px; }
   .brand small { display: none; }
-  .topbar select { width: 55%; font-size: 11px; }
+  .topbar-controls { width: 55%; }
+  .topbar select { width: 50%; min-width: 0; font-size: 11px; padding: 9px 5px; }
   main { width: min(100% - 24px, 1160px); padding-top: 25px; }
   .hero { align-items: start; flex-direction: column; }
   .hero h1 { font-size: 35px; }
@@ -136,6 +160,10 @@ button.signal-message:hover { border-color: #91aa9c; transform: translateY(-1px)
   .metric { min-height: 105px; }
   .asset-grid { grid-template-columns: 1fr; }
   .signal-feed { grid-template-columns: 1fr; }
+  .task-grid { grid-template-columns: 1fr; }
+  .hero--product { align-items: start; }
+  .report-panel { grid-template-columns: 1fr; }
+  .report-panel textarea, .report-panel .chips, .report-panel .button-row, .report-panel .fallback { grid-column: 1; }
   .asset-card { grid-template-columns: 38px 1fr; }
   .asset-card .status { grid-column: 2; }
   .drawer { padding: 38px 22px; }
