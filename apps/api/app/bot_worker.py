@@ -75,6 +75,10 @@ def back_button(payload: str = "back:menu", text: str = "Назад") -> dict[st
     return {"type": "callback", "text": text, "payload": payload}
 
 
+def menu_button() -> dict[str, Any]:
+    return back_button("back:menu", "В меню")
+
+
 class PollState:
     def __init__(self, path: str, default_house_id: str):
         self.path = Path(path)
@@ -346,7 +350,7 @@ def menu_keyboard() -> list[dict[str, Any]]:
 
 
 def cancel_keyboard() -> list[dict[str, Any]]:
-    return inline_keyboard([[back_button()], [{"type": "callback", "text": "Отмена", "payload": "menu:cancel"}]])
+    return inline_keyboard([[menu_button()]])
 
 
 def category_keyboard() -> list[dict[str, Any]]:
@@ -361,7 +365,7 @@ def category_keyboard() -> list[dict[str, Any]]:
                 {"type": "callback", "text": "Дверь / домофон", "payload": "category:door"},
             ],
             [{"type": "callback", "text": "Другое", "payload": "category:other"}],
-            [back_button()],
+            [menu_button()],
         ]
     )
 
@@ -373,7 +377,7 @@ def zone_keyboard(zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
     return inline_keyboard(
         [buttons[index : index + 2] for index in range(0, len(buttons), 2)]
-        + [[back_button("back:category")], [{"type": "callback", "text": "Отмена", "payload": "menu:cancel"}]]
+        + [[back_button("back:category", "Назад к категории")], [{"type": "callback", "text": "Отменить обращение", "payload": "menu:cancel"}]]
     )
 
 
@@ -382,7 +386,7 @@ def house_keyboard() -> list[dict[str, Any]]:
         [
             [{"type": "callback", "text": "Дом А · Никольский, 12", "payload": "house:demo-house-a"}],
             [{"type": "callback", "text": "Дом Б · Центральная, 7", "payload": "house:demo-house-b"}],
-            [back_button()],
+            [menu_button()],
         ]
     )
 
@@ -398,7 +402,7 @@ def role_keyboard() -> list[dict[str, Any]]:
                 {"type": "callback", "text": "Я УК / диспетчер", "payload": "role:uk"},
                 {"type": "callback", "text": "Я исполнитель", "payload": "role:executor"},
             ],
-            [back_button()],
+            [menu_button()],
         ]
     )
 
@@ -412,8 +416,17 @@ def status_keyboard(status: dict[str, Any]) -> list[dict[str, Any]]:
     for initiative in status.get("initiatives") or []:
         rows.append([{"type": "callback", "text": f"Инициатива: {initiative.get('title', 'без названия')}"[:128], "payload": f"open_initiative:{initiative['id']}"}])
     rows.append([{"type": "callback", "text": "Сообщить о проблеме", "payload": "menu:report"}])
-    rows.append([back_button()])
+    rows.append([menu_button()])
     return inline_keyboard(rows)
+
+
+def notification_keyboard(issue: dict[str, Any]) -> list[dict[str, Any]]:
+    return inline_keyboard(
+        [
+            [{"type": "callback", "text": "Открыть обращение", "payload": f"open_issue:{issue['id']}"}],
+            [menu_button()],
+        ]
+    )
 
 
 def destination_label(destination: str | None) -> str:
@@ -451,7 +464,7 @@ def route_keyboard(issue_id: str) -> list[dict[str, Any]]:
         [
             [{"type": "callback", "text": "Передать в управляющую компанию", "payload": f"route_select:{issue_id}:management_org"}],
             [{"type": "callback", "text": "Оставить домоуправляющему", "payload": f"route_select:{issue_id}:representative"}],
-            [back_button()],
+            [menu_button()],
         ]
     )
 
@@ -518,12 +531,8 @@ def issue_keyboard(
                 {"type": "callback", "text": "Не исправлено", "payload": f"verify_no:{issue_id}"},
             ]
         )
-    if role != "legacy":
-        rows.append([{"type": "callback", "text": f"Роль: {ROLE_LABELS.get(role, ROLE_LABELS['resident'])}", "payload": "menu:role"}])
     rows.append([{"type": "open_app", "text": "Открыть карточку", "web_app": bot_username, "payload": f"issue_{issue_id}"}])
-    rows.append([back_button()])
-    if miniapp_url and "localhost" not in miniapp_url:
-        rows.append([{"type": "link", "text": "Открыть в браузере", "url": f"{miniapp_url.rstrip('/')}?issue={issue_id}"}])
+    rows.append([menu_button()])
     return inline_keyboard(rows)
 
 
@@ -534,10 +543,8 @@ def initiative_keyboard(initiative: dict[str, Any], bot_username: str, role: str
     ]
     if initiative.get("state") == "INFORMAL_POLL" and role in {"representative", "legacy"}:
         rows.append([{"type": "callback", "text": "Зафиксировать результат", "payload": f"initiative_handoff:{initiative['id']}"}])
-    if role != "legacy":
-        rows.append([{"type": "callback", "text": f"Роль: {ROLE_LABELS.get(role, ROLE_LABELS['resident'])}", "payload": "menu:role"}])
     rows.append([{"type": "open_app", "text": "Открыть инициативу", "web_app": bot_username, "payload": f"initiative_{initiative['id']}"}])
-    rows.append([back_button()])
+    rows.append([menu_button()])
     return inline_keyboard(rows)
 
 
@@ -624,8 +631,6 @@ def format_result(result: dict[str, Any], miniapp_url: str) -> str:
         if route := issue_route_text(issue):
             lines.append(route)
         lines.append(issue_next_step(issue))
-        if miniapp_url and "localhost" not in miniapp_url:
-            lines.append(f"[Открыть ДомПульс]({miniapp_url})")
         return "\n".join(lines)
     if initiative := result.get("initiative"):
         return format_initiative(initiative)
@@ -1060,15 +1065,15 @@ async def notify_state_changes(
                     f"{state_label(previous_state)} → {state_label(current_state)}\n\n"
                     f"{issue_next_step(issue)}"
                 )
+                role = state.role_for(conversation_key, str(watcher.get("user_id") or ""))
                 await adapter.send_message(
                     text=text,
                     chat_id=watcher.get("chat_id"),
                     user_id=None if watcher.get("chat_id") else watcher.get("user_id"),
-                    attachments=issue_keyboard(
-                        issue,
-                        miniapp_url,
-                        bot_username,
-                        state.role_for(conversation_key, str(watcher.get("user_id") or "")),
+                    attachments=(
+                        issue_keyboard(issue, miniapp_url, bot_username, role)
+                        if current_state == "DONE_PENDING_VERIFICATION"
+                        else notification_keyboard(issue)
                     ),
                 )
             watcher["last_state"] = current_state

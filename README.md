@@ -114,7 +114,7 @@ Suite покрывает:
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон: `36 passed`; production React build и live browser verification также проходят. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон API и MAX-бота: `42 passed`; production React build и live browser verification также проходят. Метрики: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 

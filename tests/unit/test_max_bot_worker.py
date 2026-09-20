@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.bot_worker import PollState, format_result, handle_callback, help_text, initiative_keyboard, issue_keyboard, menu_keyboard, notify_state_changes
+from app.bot_worker import PollState, cancel_keyboard, format_result, handle_callback, help_text, initiative_keyboard, issue_keyboard, menu_keyboard, notify_state_changes, zone_keyboard
 from app.integrations.max_updates import IncomingMaxCallback, parse_incoming_callback, parse_incoming_message, polling_is_active
 
 
@@ -102,7 +102,6 @@ def test_bot_response_exposes_real_domain_result():
     assert "Лифт №2" in response
     assert "Подтверждений: 8" in response
     assert "4 событий" in response
-    assert "https://demo.example/" in response
 
 
 def test_help_documents_house_switching():
@@ -137,13 +136,20 @@ def test_issue_keyboard_hides_operator_actions_from_resident():
     buttons = issue_keyboard({"id": "issue-1", "state": "ACTION_READY"}, "", "dompuls_bot", "resident")[0]["payload"]["buttons"]
     payloads = {button["payload"] for row in buttons for button in row if button.get("type") == "callback"}
     assert "issue_submit:issue-1" not in payloads
-    assert "menu:role" in payloads
 
 
 def test_issue_keyboard_shows_only_uk_action():
     buttons = issue_keyboard({"id": "issue-1", "state": "SUBMITTED"}, "", "dompuls_bot", "uk")[0]["payload"]["buttons"]
     payloads = {button["payload"] for row in buttons for button in row if button.get("type") == "callback"}
     assert payloads == {"issue_accept:issue-1"}
+
+
+def test_navigation_buttons_have_distinct_meaning():
+    cancel_buttons = cancel_keyboard()[0]["payload"]["buttons"]
+    assert cancel_buttons == [[{"type": "callback", "text": "В меню", "payload": "back:menu"}]]
+    zone_buttons = zone_keyboard([{"id": "zone-1", "name": "Подъезд 1"}])[0]["payload"]["buttons"]
+    assert zone_buttons[-2][0]["text"] == "Назад к категории"
+    assert zone_buttons[-1][0]["text"] == "Отменить обращение"
 
 
 def test_menu_report_starts_persistent_dialog(tmp_path):
