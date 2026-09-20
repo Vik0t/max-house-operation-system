@@ -6,7 +6,7 @@ Interactive schema is available at `/docs`; OpenAPI JSON is at `/openapi.json`.
 
 - `GET /houses`
 - `GET /houses/{id}`
-- `GET /houses/{id}/state`
+- `GET /houses/{id}/state?viewer_id=...&role=resident|representative|uk|executor` — состояние дома плюс `viewer`, `my_issues` и серверная очередь `my_tasks` с одним следующим действием для роли
 - `GET /houses/{id}/assets`
 - `GET /assets/{id}`
 - `GET /assets/{id}/timeline`

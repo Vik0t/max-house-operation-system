@@ -9,28 +9,32 @@ docker compose up --build -d
 curl http://localhost:8000/health
 ```
 
-Open <http://localhost:3000>. Keep `/docs` in a second tab as architecture proof.
+Open <http://localhost:3000>. The first screen is a role-specific task queue. Use the role selector only as a visible demo control; in MAX the role is selected during `/start` and later comes from organization permissions. Keep `/docs` in a second tab as architecture proof.
 
 For the real MAX demo, open the configured bot, send `/start`, choose a role, then send the lift messages there. Watch `docker compose logs -f bot`; the same Issue will appear in the mini-app. Use `Сменить дом` or `/дом_b` to demonstrate config-driven switching from the bot.
 
 ## Exact flow
 
-### 0:00–0:40 — House memory
+### 0:00–0:40 — Role-specific task queue
+
+Start as `Житель`, then switch to `Домоуправляющий`, `УК / диспетчер` and `Исполнитель`. The heading, task queue and next action change for each role. A resident never sees assignment or executor controls.
+
+### 0:40–1:10 — House memory
 
 Show House A metrics and click `Лифт №2`. Point out three previous closed incidents and current fourth incident. Close timeline.
 
-### 0:40–1:10 — Chat to structured Issue
+### 1:10–1:40 — Chat to structured Issue
 
 Send the three supplied messages in order. The current issue is shown as one grouped incident with confirmations and source messages. Say: «ДомПульс связал сообщения не просто с обращением, а с объектом и его историей».
 
-### 1:10–2:30 — Closed loop
+### 1:40–3:00 — Closed loop
 
 Open the current Issue with the appropriate role and press:
 
 ```text
-Подтвердить проблему
-→ Передать в управляющую компанию
-→ Принять в работу
+У меня тоже / Подтвердить проблему
+→ Передать в УК
+→ Принять обращение
 → Назначить исполнителя
 → Начать работу
 → Добавить фото выполнения
@@ -40,17 +44,17 @@ Open the current Issue with the appropriate role and press:
 
 Show that передача помечена как демонстрационная. After verification, Asset becomes HEALTHY. Reopen Asset timeline and show the new Issue and WorkOrder.
 
-### 2:30–3:10 — Community initiative
+### 3:00–3:35 — Community initiative
 
 Vote in «Второй фонарь на парковке», then `Зафиксировать результат`. Show `FORMAL HANDOFF REQUIRED` and the notice that the poll is not a legal ОСС.
 
-### 3:10–3:35 — Scale proof
+### 3:35–3:55 — Scale proof
 
 Switch to House B. Point out different asset tree, management organization, recurrence threshold and contractor routing. If time allows, create a lift issue and confirm it; Action destination is `polar-lift-contractor`.
 
-### 3:35–4:00 — Reliability / integrity
+### 3:55–4:20 — Reliability / integrity
 
-Mention 20 clean E2E runs, polling/webhook idempotency, state-machine rejection, manual AI fallback and provenance. Click `Проверить AI fallback` if the network/demo is stable.
+Mention 20 clean E2E runs, polling/webhook idempotency, state-machine rejection, manual AI fallback and provenance. Technical signal input and AI fallback are available only under the explicit `Это демо` control in the resident report form.
 
 ## Recovery
 
