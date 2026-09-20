@@ -336,8 +336,9 @@ class DomPulsApi:
             json={"category": category, "zone_id": zone_id},
         )
 
-    async def house_status(self, house_id: str) -> dict[str, Any]:
-        return await self.request("GET", f"/houses/{house_id}/state")
+    async def house_status(self, house_id: str, viewer_id: str | None = None) -> dict[str, Any]:
+        params = {"viewer_id": viewer_id} if viewer_id else None
+        return await self.request("GET", f"/houses/{house_id}/state", params=params)
 
     async def create_initiative(self, house_id: str, title: str, summary: str) -> dict[str, Any]:
         return await self.request(
@@ -711,7 +712,7 @@ ROLE_ATTENTION_STATES = {
 }
 
 
-def format_status(status: dict[str, Any], role: str = "resident") -> str:
+def format_status(status: dict[str, Any], role: str = "resident", heading: str = "Состояние дома") -> str:
     house = status.get("house") or {}
     metrics = status.get("metrics") or {}
     active = [
@@ -738,7 +739,7 @@ def format_status(status: dict[str, Any], role: str = "resident") -> str:
         "executor": "Ваши действия: открыть назначенную работу, добавить фото и завершить её.",
     }.get(role, "Откройте проблему, чтобы увидеть доступное действие.")
     return (
-        "**Состояние дома**\n"
+        f"**{heading}**\n"
         f"{house.get('address', 'Дом')}\n\n"
         f"Открытых проблем: {metrics.get('active_issues', 0)}\n"
         f"В работе: {metrics.get('work_in_progress', 0)}\n"
@@ -972,7 +973,18 @@ async def handle_callback(
         if value == "houses":
             await adapter.answer_callback(callback.callback_id, notification="Выберите дом", message=callback_message(callback, "**Выберите дом для этого чата**", house_keyboard()))
             return
-        if value in {"status", "issues"}:
+        if value == "issues":
+            house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
+            status = await api.house_status(house_id, viewer_id=callback.user_id)
+            personal = status.get("my_issues") or []
+            personal_status = {**status, "issues": personal, "metrics": {**(status.get("metrics") or {}), "active_issues": len(personal)}}
+            await adapter.answer_callback(
+                callback.callback_id,
+                notification="Ваши обращения",
+                message=callback_message(callback, format_status(personal_status, role, "Мои обращения"), status_keyboard(personal_status, role)),
+            )
+            return
+        if value == "status":
             house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
             status = await api.house_status(house_id)
             await adapter.answer_callback(callback.callback_id, notification="Состояние обновлено", message=callback_message(callback, format_status(status, role), status_keyboard(status, role)))

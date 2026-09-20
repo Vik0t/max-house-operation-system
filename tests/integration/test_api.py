@@ -7,6 +7,12 @@ def test_health_and_house_state(client):
     assert len(state["assets"]) == 4
 
 
+def test_house_state_can_scope_my_issues_without_exposing_author_ids(client):
+    state = client.get("/houses/demo-house-a/state", params={"viewer_id": "resident-seed-1"}).json()
+    assert [item["id"] for item in state["my_issues"]] == ["demo-current-elevator-issue"]
+    assert all("related_signal_author_ids" not in item for item in state["issues"])
+
+
 def test_signal_clusters_by_house_zone_asset(client):
     result = client.post("/signals", json={"house_id": "demo-house-a", "text": "лифт опять встал во втором подъезде", "author_id": "r6"})
     assert result.status_code == 201

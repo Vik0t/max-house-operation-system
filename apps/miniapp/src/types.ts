@@ -103,6 +103,7 @@ export type HouseState = {
   }
   assets: Asset[]
   issues: Issue[]
+  my_issues?: Issue[]
   history_issues?: Issue[]
   initiatives: Initiative[]
   recent_signals: Signal[]

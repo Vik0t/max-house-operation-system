@@ -266,6 +266,7 @@ def house_state_issue_cards(
                 "zone_name": zone_names.get(primary.zone_id),
                 "related_issue_count": len(candidates),
                 "related_issue_ids": [item.id for item in candidates],
+                "related_signal_author_ids": sorted({signal.author_id for item in candidates for signal in item.signals}),
                 "signals_count": sum(len(item.signals) for item in candidates),
                 "confirmations_count": max(item.confirmations_count for item in candidates),
                 "recurrence_count": max(item.recurrence_count for item in candidates),
@@ -285,13 +286,20 @@ def list_assets(house_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/houses/{house_id}/state")
-def house_state(house_id: str, db: Session = Depends(get_db)):
+def house_state(house_id: str, viewer_id: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db)):
     house = db.get(House, house_id) or not_found("House", house_id)
     issues = db.scalars(select(Issue).where(Issue.house_id == house_id)).all()
     assets = db.scalars(select(Asset).where(Asset.house_id == house_id)).all()
     zones = db.scalars(select(Zone).where(Zone.house_id == house_id)).all()
     initiatives = db.scalars(select(Initiative).where(Initiative.house_id == house_id, Initiative.state != InitiativeState.CLOSED.value)).all()
     issue_cards, history_issues = house_state_issue_cards(issues, assets, zones)
+    my_issue_cards = (
+        [item for item in issue_cards if viewer_id and viewer_id in (item.get("related_signal_author_ids") or [])]
+        if viewer_id
+        else []
+    )
+    for card in issue_cards:
+        card.pop("related_signal_author_ids", None)
     threshold = get_house_config(house_id).recurrence.count
     recent_signals = db.scalars(
         select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(40)
@@ -335,6 +343,7 @@ def house_state(house_id: str, db: Session = Depends(get_db)):
         },
         "assets": [asset_dict(item, operational_state(db, item)) for item in assets],
         "issues": issue_cards,
+        "my_issues": my_issue_cards,
         "history_issues": history_issues,
         "initiatives": [initiative_dict(item) for item in initiatives],
         "recent_signals": signal_feed,
