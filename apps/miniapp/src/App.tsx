@@ -22,6 +22,27 @@ function roleFromQuery(): ViewerRole {
 function roleLabel(role: ViewerRole) { return roles.find((item) => item.id === role)?.label || 'Житель' }
 function roleIntro(role: ViewerRole) { return roles.find((item) => item.id === role)?.intro || '' }
 
+type TaskIssue = Issue & { next_action?: { id: string; label: string } }
+
+function fallbackTasks(state: HouseState, role: ViewerRole): TaskIssue[] {
+  // Keeps the public demo useful while an older API image is being rolled out.
+  // The server-provided queue remains authoritative whenever it is available.
+  const states: Record<ViewerRole, string[]> = {
+    resident: ['NEEDS_CONFIRMATION', 'DONE_PENDING_VERIFICATION', 'REOPENED'],
+    representative: ['NEEDS_CONFIRMATION', 'CONFIRMED', 'ACTION_READY', 'REOPENED'],
+    uk: ['SUBMITTED', 'ACCEPTED', 'WORK_IN_PROGRESS'],
+    executor: ['ACCEPTED', 'WORK_IN_PROGRESS'],
+  }
+  const labels: Record<ViewerRole, Record<string, string>> = {
+    resident: { NEEDS_CONFIRMATION: 'У меня тоже', DONE_PENDING_VERIFICATION: 'Проверить результат', REOPENED: 'Посмотреть переоткрытую проблему' },
+    representative: { NEEDS_CONFIRMATION: 'Проверить подтверждения', CONFIRMED: 'Выбрать маршрут', ACTION_READY: 'Передать в УК', REOPENED: 'Проверить повторно' },
+    uk: { SUBMITTED: 'Принять обращение', ACCEPTED: 'Назначить исполнителя', WORK_IN_PROGRESS: 'Открыть работу' },
+    executor: { ACCEPTED: 'Начать работу', WORK_IN_PROGRESS: 'Продолжить работу' },
+  }
+  const pool = role === 'resident' ? (state.my_issues || []) : state.issues
+  return pool.filter((item) => states[role].includes(item.state)).map((item) => ({ ...item, next_action: { id: 'open', label: labels[role][item.state] || 'Открыть' } }))
+}
+
 function TaskCard({ issue, onOpen }: { issue: Issue & { next_action?: { id: string; label: string } }; onOpen: () => void }) {
   return <button className="task-card" onClick={onOpen}>
     <div className="task-card__top"><span className="task-dot" /><span>{issue.zone_name || 'Дом'} · {issue.asset_name || issue.category}</span></div>
@@ -77,7 +98,10 @@ export default function App() {
   function openAsset(id: string) { void perform(async () => { const result = await api.timeline(id); setTimeline({ name: result.asset.name, events: result.events }) }) }
   function shareCurrentIssue() { if (issue) void perform(async () => { await shareIssue(issue.title, issue.id); notifyMax('success') }) }
 
-  const tasks = useMemo(() => state?.my_tasks || [], [state?.my_tasks])
+  const tasks = useMemo<TaskIssue[]>(() => {
+    if (!state) return []
+    return state.my_tasks?.length ? state.my_tasks : fallbackTasks(state, role)
+  }, [role, state])
   const currentRole = roleLabel(role)
   return <div className="app-shell">
     <header className="topbar"><div className="brand"><span>ДП</span><div><strong>ДомПульс</strong><small>{maxUserName ? `${maxUserName}, ваш дом` : 'Ваши задачи по дому'}</small></div></div><div className="topbar-controls"><select aria-label="Выбрать дом" value={houseId} onChange={(event) => { setHouseId(event.target.value); setIssue(null); setTimeline(null) }}>{houses.map((house) => <option key={house.id} value={house.id}>{house.address}</option>)}</select><select aria-label="Выбрать роль для демонстрации" value={role} onChange={(event) => setRole(event.target.value as ViewerRole)}>{roles.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div></header>
