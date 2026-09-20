@@ -302,7 +302,7 @@ def role_task_action(issue: dict[str, Any], role: str) -> dict[str, str] | None:
     order = (issue.get("work_orders") or [])[-1:] if isinstance(issue.get("work_orders"), list) else []
     order_status = order[0].get("status") if order else None
     actions: dict[tuple[str, str], tuple[str, str]] = {
-        ("resident", IssueState.NEEDS_CONFIRMATION.value): ("confirm", "Подтвердить проблему"),
+        ("resident", IssueState.NEEDS_CONFIRMATION.value): ("confirm", "У меня тоже"),
         ("resident", IssueState.DONE_PENDING_VERIFICATION.value): ("verify", "Проверить результат"),
         ("resident", IssueState.REOPENED.value): ("open", "Посмотреть переоткрытую проблему"),
         ("representative", IssueState.NEEDS_CONFIRMATION.value): ("confirm", "Проверить подтверждения"),
