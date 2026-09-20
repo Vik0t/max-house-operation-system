@@ -55,6 +55,7 @@ from .schemas import (
     MaxInitDataRequest,
     PollRequest,
     ResidentConfirmRequest,
+    RouteSelectionRequest,
     SignalCreate,
     SubmitRequest,
     VerifyRequest,
@@ -597,6 +598,27 @@ def confirm_issue(issue_id: str, payload: ConfirmRequest, db: Session = Depends(
     issue.confirmations_count += 1
     create_action(db, issue)
     run_issue_transition(db, issue, IssueState.ACTION_READY, "domain")
+    commit(db)
+    return issue_dict(issue, detailed=True)
+
+
+@app.post("/issues/{issue_id}/route")
+def select_issue_route(issue_id: str, payload: RouteSelectionRequest, db: Session = Depends(get_db)):
+    issue = get_issue(db, issue_id)
+    if issue.state != IssueState.ACTION_READY.value:
+        raise HTTPException(status_code=409, detail="Маршрут можно выбрать только для готовой к передаче проблемы")
+    if not issue.actions:
+        raise HTTPException(status_code=409, detail="Для проблемы ещё не сформировано действие")
+    house = db.get(House, issue.house_id) or not_found("House", issue.house_id)
+    action = issue.actions[-1]
+    if payload.destination == "management_org":
+        action.suggested_destination = house.management_org
+        action.rationale = "Адресат выбран домоуправляющим: управляющая организация дома."
+    else:
+        action.suggested_destination = f"Домоуправляющий · {house.address}"
+        action.rationale = "Адресат выбран домоуправляющим для ручной проверки обращения."
+    action.confidence = 1.0
+    audit(db, "Issue", issue.id, "ROUTE_SELECTED", payload.actor_id, details={"destination": payload.destination})
     commit(db)
     return issue_dict(issue, detailed=True)
 

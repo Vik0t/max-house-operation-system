@@ -14,12 +14,65 @@ from .settings import Settings, get_settings
 
 LOGGER = logging.getLogger("dompuls.max_bot")
 HOUSE_COMMANDS = {"/house_a": "demo-house-a", "/house_b": "demo-house-b"}
+HOUSE_LABELS = {
+    "demo-house-a": "Дом А · Никольский, 12",
+    "demo-house-b": "Дом Б · Центральная, 7",
+}
 ROLE_LABELS = {
     "resident": "Житель",
     "representative": "Домоуправляющий",
     "uk": "УК / диспетчер",
     "executor": "Исполнитель",
 }
+STATE_LABELS = {
+    "DETECTED": "Обнаружена",
+    "NEEDS_CONFIRMATION": "Ждёт подтверждений",
+    "CONFIRMED": "Подтверждена",
+    "ACTION_READY": "Готова к передаче",
+    "SUBMITTED": "Передана в управляющую компанию",
+    "ACCEPTED": "Принята в работу",
+    "WORK_IN_PROGRESS": "В работе",
+    "DONE_PENDING_VERIFICATION": "Ждёт проверки жителем",
+    "VERIFIED": "Результат подтверждён",
+    "CLOSED": "Закрыта",
+    "REOPENED": "Переоткрыта",
+    "DUPLICATE": "Объединена с другой проблемой",
+    "REJECTED": "Отклонена",
+    "CANCELLED": "Отменена",
+}
+ORDER_STATE_LABELS = {
+    "NEW": "Новая",
+    "ASSIGNED": "Назначена исполнителю",
+    "IN_PROGRESS": "Исполняется",
+    "DONE": "Выполнена, ждёт проверки",
+    "ACCEPTED": "Принята жителем",
+    "REWORK_REQUIRED": "Нужна доработка",
+}
+INITIATIVE_STATE_LABELS = {
+    "DETECTED": "Обнаружена",
+    "DRAFT": "Черновик",
+    "DISCUSSION": "Обсуждение",
+    "INFORMAL_POLL": "Опрос жителей",
+    "RESULT": "Результат опроса",
+    "CLOSED": "Закрыта",
+    "FORMAL_HANDOFF_REQUIRED": "Нужна официальная передача",
+}
+
+
+def state_label(value: str | None, labels: dict[str, str] = STATE_LABELS) -> str:
+    return labels.get(str(value), "Состояние уточняется")
+
+
+def house_label(house_id: str) -> str:
+    return HOUSE_LABELS.get(house_id, house_id)
+
+
+def nav_row(*buttons: dict[str, Any]) -> list[list[dict[str, Any]]]:
+    return [[*buttons]]
+
+
+def back_button(payload: str = "back:menu", text: str = "Назад") -> dict[str, Any]:
+    return {"type": "callback", "text": text, "payload": payload}
 
 
 class PollState:
@@ -252,6 +305,9 @@ class DomPulsApi:
     async def confirm(self, issue_id: str) -> dict[str, Any]:
         return await self.request("POST", f"/issues/{issue_id}/confirm", json={})
 
+    async def select_route(self, issue_id: str, destination: str) -> dict[str, Any]:
+        return await self.request("POST", f"/issues/{issue_id}/route", json={"destination": destination})
+
     async def verify(self, issue_id: str, actor_id: str, result: str) -> dict[str, Any]:
         return await self.request(
             "POST",
@@ -290,7 +346,7 @@ def menu_keyboard() -> list[dict[str, Any]]:
 
 
 def cancel_keyboard() -> list[dict[str, Any]]:
-    return inline_keyboard([[{"type": "callback", "text": "Отмена", "payload": "menu:cancel"}]])
+    return inline_keyboard([[back_button()], [{"type": "callback", "text": "Отмена", "payload": "menu:cancel"}]])
 
 
 def category_keyboard() -> list[dict[str, Any]]:
@@ -305,6 +361,7 @@ def category_keyboard() -> list[dict[str, Any]]:
                 {"type": "callback", "text": "Дверь / домофон", "payload": "category:door"},
             ],
             [{"type": "callback", "text": "Другое", "payload": "category:other"}],
+            [back_button()],
         ]
     )
 
@@ -314,14 +371,18 @@ def zone_keyboard(zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {"type": "callback", "text": str(zone.get("name") or zone.get("number") or "Зона"), "payload": f"zone:{zone['id']}"}
         for zone in zones[:8]
     ]
-    return inline_keyboard([buttons[index : index + 2] for index in range(0, len(buttons), 2)] + [[{"type": "callback", "text": "Отмена", "payload": "menu:cancel"}]])
+    return inline_keyboard(
+        [buttons[index : index + 2] for index in range(0, len(buttons), 2)]
+        + [[back_button("back:category")], [{"type": "callback", "text": "Отмена", "payload": "menu:cancel"}]]
+    )
 
 
 def house_keyboard() -> list[dict[str, Any]]:
     return inline_keyboard(
         [
-            [{"type": "callback", "text": "Дом A · Никольский 12", "payload": "house:demo-house-a"}],
-            [{"type": "callback", "text": "Дом B · Центральная 7", "payload": "house:demo-house-b"}],
+            [{"type": "callback", "text": "Дом А · Никольский, 12", "payload": "house:demo-house-a"}],
+            [{"type": "callback", "text": "Дом Б · Центральная, 7", "payload": "house:demo-house-b"}],
+            [back_button()],
         ]
     )
 
@@ -337,6 +398,7 @@ def role_keyboard() -> list[dict[str, Any]]:
                 {"type": "callback", "text": "Я УК / диспетчер", "payload": "role:uk"},
                 {"type": "callback", "text": "Я исполнитель", "payload": "role:executor"},
             ],
+            [back_button()],
         ]
     )
 
@@ -350,7 +412,63 @@ def status_keyboard(status: dict[str, Any]) -> list[dict[str, Any]]:
     for initiative in status.get("initiatives") or []:
         rows.append([{"type": "callback", "text": f"Инициатива: {initiative.get('title', 'без названия')}"[:128], "payload": f"open_initiative:{initiative['id']}"}])
     rows.append([{"type": "callback", "text": "Сообщить о проблеме", "payload": "menu:report"}])
+    rows.append([back_button()])
     return inline_keyboard(rows)
+
+
+def destination_label(destination: str | None) -> str:
+    value = (destination or "").lower()
+    if "uk-" in value or "management" in value or "управ" in value:
+        return "управляющей компании"
+    if "representative" in value or "представ" in value:
+        return "домоуправляющему"
+    if value:
+        return "ответственному"
+    return "адресату"
+
+
+def issue_action(issue: dict[str, Any]) -> dict[str, Any] | None:
+    actions = issue.get("actions") or []
+    return actions[-1] if actions else None
+
+
+def issue_route_text(issue: dict[str, Any]) -> str | None:
+    action = issue_action(issue)
+    if not action:
+        return None
+    destination = destination_label(action.get("suggested_destination"))
+    confidence = float(action.get("confidence") or 0)
+    prefix = "Предлагаемый адресат" if confidence < 0.7 else "Адресат"
+    text = f"{prefix}: {destination}"
+    rationale = str(action.get("rationale") or "").strip()
+    if rationale:
+        text += f"\nПочему: {rationale}"
+    return text
+
+
+def route_keyboard(issue_id: str) -> list[dict[str, Any]]:
+    return inline_keyboard(
+        [
+            [{"type": "callback", "text": "Передать в управляющую компанию", "payload": f"route_select:{issue_id}:management_org"}],
+            [{"type": "callback", "text": "Оставить домоуправляющему", "payload": f"route_select:{issue_id}:representative"}],
+            [back_button()],
+        ]
+    )
+
+
+def asset_label(issue: dict[str, Any]) -> str:
+    if issue.get("asset_name"):
+        return str(issue["asset_name"])
+    title = str(issue.get("title") or "")
+    if ":" in title:
+        return title.split(":", 1)[0]
+    asset_id = str(issue.get("asset_id") or "")
+    if "elevator" in asset_id:
+        suffix = asset_id.rsplit("-", 1)[-1]
+        return f"Лифт №{suffix}" if suffix.isdigit() else "Лифт"
+    if "lighting" in asset_id:
+        return "Освещение"
+    return "объект уточняется"
 
 
 def issue_keyboard(
@@ -373,7 +491,13 @@ def issue_keyboard(
     if role in {"representative", "legacy"} and issue.get("state") == "NEEDS_CONFIRMATION":
         rows.append([{"type": "callback", "text": "Подтвердить проблему", "payload": f"issue_confirm:{issue_id}"}])
     if role in {"representative", "legacy"} and issue.get("state") == "ACTION_READY":
-        rows.append([{"type": "callback", "text": "Передать в УК", "payload": f"issue_submit:{issue_id}"}])
+        action = issue_action(issue)
+        confidence = float((action or {}).get("confidence") or 1)
+        if confidence < 0.7:
+            rows.append([{"type": "callback", "text": "Выбрать адресата", "payload": f"route:{issue_id}"}])
+        else:
+            destination = destination_label((action or {}).get("suggested_destination"))
+            rows.append([{"type": "callback", "text": f"Передать {destination}", "payload": f"issue_submit:{issue_id}"}])
     if role in {"uk", "legacy"} and issue.get("state") == "SUBMITTED":
         rows.append([{"type": "callback", "text": "Принять в работу", "payload": f"issue_accept:{issue_id}"}])
     order = (issue.get("work_orders") or [])[-1:]
@@ -386,7 +510,7 @@ def issue_keyboard(
         if current_order.get("evidence"):
             rows.append([{"type": "callback", "text": "Завершить работу", "payload": f"order_done:{issue_id}"}])
         else:
-            rows.append([{"type": "callback", "text": "Добавить evidence (demo)", "payload": f"order_evidence:{issue_id}"}])
+            rows.append([{"type": "callback", "text": "Добавить фото выполнения", "payload": f"order_evidence:{issue_id}"}])
     if role in {"resident", "legacy"} and issue.get("state") == "DONE_PENDING_VERIFICATION":
         rows.append(
             [
@@ -397,19 +521,23 @@ def issue_keyboard(
     if role != "legacy":
         rows.append([{"type": "callback", "text": f"Роль: {ROLE_LABELS.get(role, ROLE_LABELS['resident'])}", "payload": "menu:role"}])
     rows.append([{"type": "open_app", "text": "Открыть карточку", "web_app": bot_username, "payload": f"issue_{issue_id}"}])
+    rows.append([back_button()])
     if miniapp_url and "localhost" not in miniapp_url:
         rows.append([{"type": "link", "text": "Открыть в браузере", "url": f"{miniapp_url.rstrip('/')}?issue={issue_id}"}])
     return inline_keyboard(rows)
 
 
-def initiative_keyboard(initiative: dict[str, Any], bot_username: str) -> list[dict[str, Any]]:
+def initiative_keyboard(initiative: dict[str, Any], bot_username: str, role: str = "legacy") -> list[dict[str, Any]]:
     rows = [
         [{"type": "callback", "text": option[:128], "payload": f"vote:{initiative['id']}:{index}"}]
         for index, option in enumerate(initiative.get("options") or [])
     ]
-    if initiative.get("state") == "INFORMAL_POLL":
-        rows.append([{"type": "callback", "text": "Завершить опрос и передать", "payload": f"initiative_handoff:{initiative['id']}"}])
+    if initiative.get("state") == "INFORMAL_POLL" and role in {"representative", "legacy"}:
+        rows.append([{"type": "callback", "text": "Зафиксировать результат", "payload": f"initiative_handoff:{initiative['id']}"}])
+    if role != "legacy":
+        rows.append([{"type": "callback", "text": f"Роль: {ROLE_LABELS.get(role, ROLE_LABELS['resident'])}", "payload": "menu:role"}])
     rows.append([{"type": "open_app", "text": "Открыть инициативу", "web_app": bot_username, "payload": f"initiative_{initiative['id']}"}])
+    rows.append([back_button()])
     return inline_keyboard(rows)
 
 
@@ -420,8 +548,9 @@ def format_initiative(initiative: dict[str, Any]) -> str:
         "**Инициатива жителей**\n"
         f"{initiative.get('title')}\n\n"
         f"{initiative.get('summary')}\n\n"
-        f"Неформальный опрос:\n{options}\n\n"
-        "Это обсуждение жителей, не юридически значимое ОСС."
+        f"Состояние: {state_label(initiative.get('state'), INITIATIVE_STATE_LABELS)}\n\n"
+        f"Опрос жителей:\n{options}\n\n"
+        "Это обсуждение жителей, не юридически значимое общее собрание собственников."
     )
 
 
@@ -430,7 +559,9 @@ def issue_next_step(issue: dict[str, Any]) -> str:
     if state == "NEEDS_CONFIRMATION":
         return "Следующий шаг: жители подтверждают сигнал, домоуправляющий решает, передавать ли его в УК."
     if state == "ACTION_READY":
-        return "Следующий шаг: домоуправляющий передаёт подтверждённую проблему в УК."
+        action = issue_action(issue)
+        destination = destination_label((action or {}).get("suggested_destination"))
+        return f"Следующий шаг: домоуправляющий передаёт проблему {destination}."
     if state == "SUBMITTED":
         return "Следующий шаг: УК принимает обращение в работу."
     if state == "ACCEPTED":
@@ -458,14 +589,14 @@ def format_status(status: dict[str, Any]) -> str:
         for item in status.get("issues") or []
         if item.get("state") not in {"CLOSED", "CANCELLED", "REJECTED", "DUPLICATE"}
     ]
-    issue_lines = "\n".join(f"• {item.get('title')} — {item.get('state')}" for item in active[:5]) or "• Активных проблем нет"
+    issue_lines = "\n".join(f"• {item.get('title')} — {state_label(item.get('state'))}" for item in active[:5]) or "• Активных проблем нет"
     return (
         "**Состояние дома**\n"
         f"{house.get('address', 'Дом')}\n\n"
         f"Активных проблем: {metrics.get('active_issues', 0)}\n"
         f"В работе: {metrics.get('work_in_progress', 0)}\n"
         f"Повторяющихся: {metrics.get('recurring_issues', 0)}\n"
-        f"Инициатив: {metrics.get('initiatives', 0)}\n\n"
+        f"Инициатив жителей: {metrics.get('initiatives', 0)}\n\n"
         f"Что требует внимания:\n{issue_lines}"
     )
 
@@ -479,17 +610,19 @@ def format_result(result: dict[str, Any], miniapp_url: str) -> str:
     if issue := result.get("issue"):
         clustered = bool(result.get("clustered"))
         heading = "Сообщение связано с существующей проблемой" if clustered else "Проблема зарегистрирована"
-        asset = issue.get("asset_name") or issue.get("asset_id") or "место уточняется"
+        asset = asset_label(issue)
         lines = [
             f"**{heading}**",
             f"{issue.get('title', 'Проблема дома')}",
             f"Объект: {asset}",
-            f"Статус: {issue.get('state')}",
+            f"Статус: {state_label(issue.get('state'))}",
             f"Подтверждений: {issue.get('confirmations_count', 0)}",
         ]
         recurrence = issue.get("recurrence_count", 0)
         if recurrence:
             lines.append(f"Повторяемость: {recurrence} событий в истории")
+        if route := issue_route_text(issue):
+            lines.append(route)
         lines.append(issue_next_step(issue))
         if miniapp_url and "localhost" not in miniapp_url:
             lines.append(f"[Открыть ДомПульс]({miniapp_url})")
@@ -508,9 +641,9 @@ def help_text(house_id: str, role: str = "resident") -> str:
         "«лифт опять встал во втором подъезде»\n\n"
         "Или инициативу:\n"
         "«на парковке нужен второй фонарь»\n\n"
-        f"Текущий дом: `{house_id}`\n"
+        f"Текущий дом: {house_label(house_id)} (код: {house_id})\n"
         f"{role_text(role)}\n\n"
-        "Команды: /status, /house_a, /house_b, /menu, /help\n"
+        "Команды: /status, /house_a, /house_b, /menu, /back, /cancel, /help\n"
         "Действия разделены по ролям: житель → домоуправляющий → УК → исполнитель."
     )
 
@@ -568,11 +701,21 @@ async def handle_message(
     if command in HOUSE_COMMANDS:
         house_id = HOUSE_COMMANDS[command]
         state.set_house(message, house_id)
-        await send_reply(adapter, message, f"Дом переключён: `{house_id}`\n\nТеперь сообщения относятся к этому дому.", menu_keyboard())
+        await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения относятся к этому дому.", menu_keyboard())
         return
     house_id = state.house_for(message)
     if command in {"/start", "/help", "/menu"}:
         await send_reply(adapter, message, help_text(house_id, current_role(state, message.conversation_key, message.user_id)), menu_keyboard())
+        return
+    if command in {"/back", "/назад"}:
+        dialog = state.dialog(message.conversation_key)
+        if dialog and dialog.get("mode") == "report_zone":
+            preserved = {key: item for key, item in dialog.items() if key not in {"mode", "category"}}
+            state.begin_dialog(message.conversation_key, "report_category", **preserved)
+            await send_reply(adapter, message, "Вернулись к выбору категории:", category_keyboard())
+        else:
+            state.clear_dialog(message.conversation_key)
+            await send_reply(adapter, message, "Главное меню:", menu_keyboard())
         return
     if command == "/cancel":
         state.clear_dialog(message.conversation_key)
@@ -593,7 +736,7 @@ async def handle_message(
                 state.watch_issue(message, issue)
                 attachments = issue_keyboard(issue, miniapp_url, bot_username, current_role(state, message.conversation_key, message.user_id))
             elif initiative:
-                attachments = initiative_keyboard(initiative, bot_username)
+                attachments = initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id))
             await send_reply(adapter, message, format_result(result, miniapp_url), attachments)
             return
         classification = result.get("classification") or {}
@@ -617,7 +760,7 @@ async def handle_message(
     if dialog and dialog.get("mode") == "initiative_text":
         initiative = await api.create_initiative(house_id, "Инициатива жителей", message.text)
         state.clear_dialog(message.conversation_key)
-        await send_reply(adapter, message, format_initiative(initiative), initiative_keyboard(initiative, bot_username))
+        await send_reply(adapter, message, format_initiative(initiative), initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id)))
         return
     if command == "/status":
         status = await api.house_status(house_id)
@@ -629,7 +772,7 @@ async def handle_message(
         state.watch_issue(message, issue)
         attachments = issue_keyboard(issue, miniapp_url, bot_username, current_role(state, message.conversation_key, message.user_id))
     elif initiative := result.get("initiative"):
-        attachments = initiative_keyboard(initiative, bot_username)
+        attachments = initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id))
     await send_reply(adapter, message, format_result(result, miniapp_url), attachments)
 
 
@@ -676,7 +819,7 @@ async def handle_callback(
             await adapter.answer_callback(
                 callback.callback_id,
                 notification="Выберите рабочую роль",
-                message=callback_message(callback, f"**Рабочая роль для этого MAX-пользователя**\n\n{role_text(role)}\n\nВ демо роль определяет доступные кнопки. В production она берётся из авторизации организации.", role_keyboard()),
+                message=callback_message(callback, f"**Рабочая роль участника**\n\n{role_text(role)}\n\nВ демонстрации роль определяет доступные действия. В рабочей системе она берётся из прав организации.", role_keyboard()),
             )
             return
         if value == "help":
@@ -697,15 +840,38 @@ async def handle_callback(
             message=callback_message(callback, f"{role_text(selected)}\n\nТеперь бот покажет только действия этой роли. Житель сообщает и проверяет результат; домоуправляющий передаёт; УК принимает и назначает; исполнитель выполняет работу.", menu_keyboard()),
         )
         return
+    if action == "back":
+        dialog = state.dialog(conversation_key) if state else None
+        if value == "category" and state and dialog and dialog.get("mode") == "report_zone":
+            preserved = {key: item for key, item in dialog.items() if key not in {"mode", "category"}}
+            state.begin_dialog(conversation_key, "report_category", **preserved)
+            await adapter.answer_callback(
+                callback.callback_id,
+                notification="Выберите категорию",
+                message=callback_message(callback, "**Что случилось?**\n\nВыберите категорию проблемы.", category_keyboard()),
+            )
+            return
+        if value == "status":
+            house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
+            status = await api.house_status(house_id)
+            await adapter.answer_callback(callback.callback_id, notification="Вернулись к состоянию дома", message=callback_message(callback, format_status(status), status_keyboard(status)))
+            return
+        if state:
+            state.clear_dialog(conversation_key)
+        await adapter.answer_callback(callback.callback_id, notification="Главное меню", message=callback_message(callback, "Выберите действие:", menu_keyboard()))
+        return
     required_role = {
         "confirm_issue": "resident",
         "issue_confirm": "representative",
         "issue_submit": "representative",
+        "route": "representative",
+        "route_select": "representative",
         "issue_accept": "uk",
         "issue_assign": "uk",
         "order_start": "executor",
         "order_evidence": "executor",
         "order_done": "executor",
+        "initiative_handoff": "representative",
         "verify_yes": "resident",
         "verify_no": "resident",
     }.get(action)
@@ -719,7 +885,7 @@ async def handle_callback(
     if action == "house":
         if state:
             state.set_house_key(conversation_key, value)
-        await adapter.answer_callback(callback.callback_id, notification=f"Выбран {value}", message=callback_message(callback, f"Дом переключён: `{value}`\n\nТеперь сообщения в этом чате относятся к выбранной конфигурации.", menu_keyboard()))
+        await adapter.answer_callback(callback.callback_id, notification="Дом выбран", message=callback_message(callback, f"Дом переключён: {house_label(value)}\n\nТеперь сообщения в этом чате относятся к выбранному дому.", menu_keyboard()))
         return
     if action == "category":
         if not state or not state.dialog(conversation_key) or state.dialog(conversation_key).get("mode") != "report_category":
@@ -765,9 +931,30 @@ async def handle_callback(
             state.watch_callback(callback, issue)
         await adapter.answer_callback(callback.callback_id, notification="Карточка проблемы", message=callback_message(callback, format_result({"issue": issue}, miniapp_url), issue_keyboard(issue, miniapp_url, bot_username, role)))
         return
+    if action == "route":
+        await adapter.answer_callback(
+            callback.callback_id,
+            notification="Выберите адресата",
+            message=callback_message(callback, "**Кому передать обращение?**\n\nМаршрут не определён автоматически. Выберите адресата вручную.", route_keyboard(value)),
+        )
+        return
+    if action == "route_select":
+        issue_id, route_separator, destination = value.rpartition(":")
+        if not route_separator or destination not in {"management_org", "representative"}:
+            await adapter.answer_callback(callback.callback_id, notification="Не удалось выбрать адресата")
+            return
+        issue = await api.select_route(issue_id, destination)
+        if state:
+            state.watch_callback(callback, issue)
+        await adapter.answer_callback(
+            callback.callback_id,
+            notification="Адресат выбран",
+            message=callback_message(callback, format_result({"issue": issue}, miniapp_url), issue_keyboard(issue, miniapp_url, bot_username, role)),
+        )
+        return
     if action == "open_initiative":
         initiative = await api.initiative(value)
-        await adapter.answer_callback(callback.callback_id, notification="Инициатива", message=callback_message(callback, format_initiative(initiative), initiative_keyboard(initiative, bot_username)))
+        await adapter.answer_callback(callback.callback_id, notification="Инициатива", message=callback_message(callback, format_initiative(initiative), initiative_keyboard(initiative, bot_username, role)))
         return
     if action == "confirm_issue":
         result = await api.resident_confirm(value, callback.user_id)
@@ -816,7 +1003,7 @@ async def handle_callback(
         return
     if action == "initiative_handoff":
         initiative = await api.handoff(value)
-        await adapter.answer_callback(callback.callback_id, notification="Результат опроса сохранён", message=callback_message(callback, format_initiative(initiative), initiative_keyboard(initiative, bot_username)))
+        await adapter.answer_callback(callback.callback_id, notification="Результат опроса сохранён", message=callback_message(callback, format_initiative(initiative), initiative_keyboard(initiative, bot_username, role)))
         return
     if action == "vote":
         initiative_id, option_separator, option_index = value.rpartition(":")
@@ -833,7 +1020,7 @@ async def handle_callback(
         await adapter.answer_callback(
             callback.callback_id,
             notification="Голос учтён",
-            message={"text": format_initiative(updated), "format": "markdown", "attachments": initiative_keyboard(updated, bot_username)},
+            message={"text": format_initiative(updated), "format": "markdown", "attachments": initiative_keyboard(updated, bot_username, role)},
         )
         return
     if action in {"verify_yes", "verify_no"}:
@@ -868,7 +1055,11 @@ async def notify_state_changes(
             if previous_state == current_state:
                 continue
             if previous_state:
-                text = f"**Статус проблемы изменился**\n{issue.get('title')}\n{previous_state} → {current_state}"
+                text = (
+                    f"**Состояние проблемы изменилось**\n{issue.get('title')}\n"
+                    f"{state_label(previous_state)} → {state_label(current_state)}\n\n"
+                    f"{issue_next_step(issue)}"
+                )
                 await adapter.send_message(
                     text=text,
                     chat_id=watcher.get("chat_id"),

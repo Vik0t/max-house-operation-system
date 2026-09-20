@@ -188,6 +188,19 @@ def test_resident_confirmation_is_per_user_idempotent(client):
     assert second.json()["issue"]["confirmations_count"] == 6
 
 
+def test_representative_can_select_manual_route(client):
+    confirmed = client.post("/issues/demo-current-elevator-issue/confirm", json={"actor_id": "representative-demo"})
+    assert confirmed.status_code == 200
+    assert confirmed.json()["state"] == "ACTION_READY"
+    routed = client.post(
+        "/issues/demo-current-elevator-issue/route",
+        json={"destination": "management_org", "actor_id": "representative-demo"},
+    )
+    assert routed.status_code == 200
+    assert routed.json()["actions"][-1]["confidence"] == 1.0
+    assert "управляющ" in routed.json()["actions"][-1]["rationale"]
+
+
 def test_initiative_same_vote_is_idempotent(client):
     path = "/initiatives/seed-parking-light-initiative/poll"
     vote = {"voter_id": "max-user-42", "option": "У въезда"}

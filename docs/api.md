@@ -20,6 +20,7 @@ Interactive schema is available at `/docs`; OpenAPI JSON is at `/openapi.json`.
 - `GET /issues?house_id=...`
 - `GET /issues/{id}`
 - `POST /issues/{id}/confirm`
+- `POST /issues/{id}/route` — ручной выбор адресата при низкой уверенности маршрутизации
 - `POST /issues/{id}/submit`
 - `POST /issues/{id}/accept`
 - `POST /issues/{id}/verify`

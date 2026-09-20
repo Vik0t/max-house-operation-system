@@ -114,6 +114,11 @@ class ManualResolveRequest(BaseModel):
     asset_id: str | None = None
 
 
+class RouteSelectionRequest(BaseModel):
+    destination: Literal["management_org", "representative"]
+    actor_id: str = Field(default="representative-demo", min_length=1, max_length=100)
+
+
 class DuplicateResolutionRequest(BaseModel):
     candidate_issue_id: str
     decision: Literal["LINK", "CREATE_NEW"]
