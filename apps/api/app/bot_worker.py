@@ -161,8 +161,15 @@ class PollState:
         self.dialogs: dict[str, dict[str, Any]] = {}
         # Roles are deliberately scoped to a MAX user and conversation. A group
         # chat can therefore contain a resident, representative and contractor
-        # without exposing operator controls to everybody.
+        # without exposing operator controls to everybody. user_roles keeps the
+        # most recent choice per user as a fallback: navigation happens in the
+        # private chat while issue cards live in the group, so a role picked in
+        # one conversation must still apply in the other.
         self.roles: dict[str, dict[str, str]] = {}
+        self.user_roles: dict[str, str] = {}
+        # signal_id -> chat the duplicate question was asked from, so the house
+        # chat can be told about the decision made in a private chat.
+        self.duplicate_chats: dict[str, str] = {}
         self.default_house_id = default_house_id
         self.load()
 
@@ -175,6 +182,8 @@ class PollState:
             self.conversations = raw.get("conversations") or {}
             self.dialogs = raw.get("dialogs") or {}
             self.roles = raw.get("roles") or {}
+            self.user_roles = raw.get("user_roles") or {}
+            self.duplicate_chats = raw.get("duplicate_chats") or {}
         except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
             self.marker = None
             self.houses = {}
@@ -182,6 +191,20 @@ class PollState:
             self.conversations = {}
             self.dialogs = {}
             self.roles = {}
+            self.user_roles = {}
+            self.duplicate_chats = {}
+
+    def remember_duplicate_chat(self, signal_id: str, chat_id: str | None) -> None:
+        if not signal_id or not chat_id:
+            return
+        self.duplicate_chats[signal_id] = chat_id
+        self.save()
+
+    def pop_duplicate_chat(self, signal_id: str) -> str | None:
+        chat_id = self.duplicate_chats.pop(signal_id, None)
+        if chat_id:
+            self.save()
+        return chat_id
 
     def house_for(self, message: IncomingMaxMessage) -> str:
         return self.houses.get(message.conversation_key, self.default_house_id)
@@ -209,16 +232,20 @@ class PollState:
         self.save()
 
     def role_for(self, conversation_key: str, user_id: str) -> str:
-        role = (self.roles.get(conversation_key) or {}).get(str(user_id), "resident")
+        user_id = str(user_id)
+        role = (self.roles.get(conversation_key) or {}).get(user_id) or self.user_roles.get(user_id, "resident")
         return role if role in ROLE_LABELS else "resident"
 
     def has_role(self, conversation_key: str, user_id: str) -> bool:
-        return str(user_id) in (self.roles.get(conversation_key) or {})
+        user_id = str(user_id)
+        return user_id in (self.roles.get(conversation_key) or {}) or user_id in self.user_roles
 
     def set_role(self, conversation_key: str, user_id: str, role: str) -> None:
         if role not in ROLE_LABELS:
             role = "resident"
-        self.roles.setdefault(conversation_key, {})[str(user_id)] = role
+        user_id = str(user_id)
+        self.roles.setdefault(conversation_key, {})[user_id] = role
+        self.user_roles[user_id] = role
         self.save()
 
     def set_marker(self, marker: int | None) -> None:
@@ -277,6 +304,8 @@ class PollState:
                     "conversations": self.conversations,
                     "dialogs": self.dialogs,
                     "roles": self.roles,
+                    "user_roles": self.user_roles,
+                    "duplicate_chats": self.duplicate_chats,
                 },
                 ensure_ascii=False,
             )
@@ -334,6 +363,13 @@ class DomPulsApi:
             "POST",
             f"/signals/{signal_id}/resolve",
             json={"category": category, "zone_id": zone_id},
+        )
+
+    async def resolve_duplicate(self, signal_id: str, candidate_issue_id: str, decision: str, actor_id: str) -> dict[str, Any]:
+        return await self.request(
+            "POST",
+            f"/signals/{signal_id}/resolve-duplicate",
+            json={"candidate_issue_id": candidate_issue_id, "decision": decision, "actor_id": actor_id},
         )
 
     async def house_status(self, house_id: str, viewer_id: str | None = None, role: str = "resident") -> dict[str, Any]:
@@ -472,6 +508,33 @@ def zone_keyboard(zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
         [buttons[index : index + 2] for index in range(0, len(buttons), 2)]
         + [[back_button("back:category", "Назад к категории")], [{"type": "callback", "text": "Отменить обращение", "payload": "menu:cancel"}]]
     )
+
+
+def duplicate_keyboard(signal_id: str, candidate_issue_id: str) -> list[dict[str, Any]]:
+    return inline_keyboard(
+        [
+            [
+                {"type": "callback", "text": "Это та же проблема", "payload": f"duplicate:{signal_id}:{candidate_issue_id}:LINK"},
+                {"type": "callback", "text": "Другая проблема", "payload": f"duplicate:{signal_id}:{candidate_issue_id}:CREATE_NEW"},
+            ],
+            [menu_button()],
+        ]
+    )
+
+
+def fallback_keyboard(result: dict[str, Any], role: str) -> list[dict[str, Any]]:
+    """Buttons that let the resident act on a clarification the API asked for.
+
+    Zone and category clarifications already get their own keyboards at the call
+    site. The duplicate question had none, which is why it looked like a dead end.
+    """
+    fallback = result.get("fallback") or {}
+    if fallback.get("type") == "DUPLICATE_CONFIRMATION":
+        signal_id = str((result.get("signal") or {}).get("id") or "")
+        candidate_id = str((fallback.get("candidate") or {}).get("id") or "")
+        if signal_id and candidate_id:
+            return duplicate_keyboard(signal_id, candidate_id)
+    return menu_keyboard(role)
 
 
 def house_keyboard() -> list[dict[str, Any]]:
@@ -765,12 +828,39 @@ def format_status(status: dict[str, Any], role: str = "resident", heading: str =
     )
 
 
+def format_fallback(fallback: dict[str, Any], miniapp_url: str) -> str:
+    """Ask the resident a question the API could not answer on its own.
+
+    Every branch names what the bot is confused about. The duplicate branch used
+    to fall through to a bare "Уточните данные сообщения", which in a group gave
+    no way to tell which message or which existing problem was meant.
+    """
+    kind = fallback.get("type")
+    if kind == "DUPLICATE_CONFIRMATION":
+        candidate = fallback.get("candidate") or {}
+        lines = [
+            "**Похоже, такая проблема уже есть**",
+            localized_issue_title(candidate),
+            f"Объект: {asset_label(candidate)}",
+            f"Статус: {state_label(candidate.get('state'))}",
+            f"Совпадение по смыслу: {round(float(fallback.get('score') or 0) * 100)}%",
+        ]
+        if recurrence := candidate.get("recurrence_count", 0):
+            lines.append(f"Повторяемость: {recurrence} событий в истории")
+        lines.append("")
+        lines.append("Это та же проблема или другая? Если другая — добавьте деталь, например подъезд или этаж.")
+        return "\n".join(lines)
+    choices = fallback.get("choices") or []
+    choice_text = "\n".join(f"• {item.get('name')}" for item in choices[:6])
+    heading = "**Нужно уточнить место**" if kind == "ZONE_CLARIFICATION" else "**Нужно уточнение**"
+    body = fallback.get("message") or "Уточните данные сообщения."
+    suffix = f"\n\nВарианты:\n{choice_text}" if choice_text else ""
+    return f"{heading}\n\n{body}{suffix}"
+
+
 def format_result(result: dict[str, Any], miniapp_url: str) -> str:
     if fallback := result.get("fallback"):
-        choices = fallback.get("choices") or []
-        choice_text = "\n".join(f"• {item.get('name')}" for item in choices[:6])
-        suffix = f"\n\nВарианты:\n{choice_text}" if choice_text else ""
-        return f"Нужно уточнение\n\n{fallback.get('message', 'Уточните данные сообщения.')}{suffix}"
+        return format_fallback(fallback, miniapp_url)
     if issue := result.get("issue"):
         clustered = bool(result.get("clustered"))
         heading = "Сообщение связано с существующей проблемой" if clustered else "Проблема зарегистрирована"
@@ -799,6 +889,19 @@ def format_result(result: dict[str, Any], miniapp_url: str) -> str:
     return "Сообщение принято и сохранено."
 
 
+def is_recognized_result(result: dict[str, Any]) -> bool:
+    """Whether a processed message is worth answering at all.
+
+    The pipeline answers NO_ACTION for ordinary chatter that carries no house
+    signal. A group chat contains greetings, questions about the weather and
+    conversations between residents, so replying to every one of them would fill
+    the house chat with bot noise. Those messages are stored but not announced.
+    """
+    if result.get("issue") or result.get("initiative") or result.get("fallback"):
+        return True
+    return (result.get("result") or "").upper() not in {"", "NO_ACTION"}
+
+
 def help_text(house_id: str, role: str = "resident") -> str:
     return (
         "**ДомПульс — бот состояния дома**\n\n"
@@ -814,15 +917,85 @@ def help_text(house_id: str, role: str = "resident") -> str:
     )
 
 
-async def send_reply(adapter: MaxAdapter, message: IncomingMaxMessage, text: str, attachments: list[dict[str, Any]] | None = None) -> None:
-    if message.chat_id:
+def short_issue_title(issue: dict[str, Any], limit: int = 60) -> str:
+    title = " ".join(localized_issue_title(issue).split())
+    return title if len(title) <= limit else title[: limit - 1] + "…"
+
+
+def group_ack(result: dict[str, Any]) -> str | None:
+    """The single line a house chat gets for a recognised message.
+
+    A shared chat should show that something was taken in, not the whole card:
+    every resident sees the line, only the author gets the details in a private
+    chat. Returns None when the message was not a house matter, so the bot keeps
+    quiet instead of acknowledging small talk.
+    """
+    if issue := result.get("issue"):
+        verb = "Принял, это уже было" if result.get("clustered") else "Записал"
+        return f"✅ {verb}: {short_issue_title(issue)}. Подробности в личке."
+    if result.get("initiative"):
+        return "✅ Инициатива создана. Опрос в личке."
+    fallback = result.get("fallback") or {}
+    kind = fallback.get("type")
+    if kind in {"ZONE_CLARIFICATION", "MANUAL_CLASSIFICATION"}:
+        return "⏳ Записал, но нужно уточнение. Спрошу в личке."
+    if kind == "DUPLICATE_CONFIRMATION":
+        return "❓ Похоже, такая уже есть. Проверю в личке."
+    return None
+
+
+async def send_reply(adapter: MaxAdapter, message: IncomingMaxMessage, text: str, attachments: list[dict[str, Any]] | None = None, *, private: bool = False, ack: str | None = None) -> None:
+    """Answer a group message.
+
+    ``private`` sends the reply to the sender instead of the chat. ``ack`` is the
+    one-line summary posted in the house chat alongside it, so neighbours see that
+    a report was taken in while the card, the buttons and the questions stay with
+    the person who needs them. A resident who never opened the bot private chat
+    cannot be written to, so the reply falls back to the chat.
+    """
+    if message.chat_id and not private:
         await adapter.send_message(text=text, chat_id=message.chat_id, attachments=attachments)
-    else:
+        return
+    if message.chat_id and ack:
+        await adapter.send_message(text=ack, chat_id=message.chat_id)
+    try:
         await adapter.send_message(text=text, user_id=message.user_id, attachments=attachments)
+    except MaxAdapterError:
+        if not message.chat_id:
+            raise
+        LOGGER.warning("Direct message to user %s failed; answering in chat %s instead", message.user_id, message.chat_id)
+        await adapter.send_message(text=f"{text}\n\n_Не смог открыть личный чат, поэтому показываю здесь._", chat_id=message.chat_id, attachments=attachments)
 
 
 def callback_message(callback: IncomingMaxCallback, text: str, attachments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {"text": text, "format": "markdown", "attachments": attachments or []}
+
+
+def dialog_key(chat_id: str | None, user_id: str | None) -> str:
+    """State a pending clarification belongs to.
+
+    A house group is shared, so a clarification stored against the chat could be
+    answered by any resident: one person's "where?" would be closed by somebody
+    else's button press. Binding the dialog to its author also makes it possible
+    to ask privately, because the buttons then arrive from the private chat,
+    where the same key is used.
+    """
+    return f"user:{user_id}" if user_id else f"chat:{chat_id}"
+
+
+def clarification_text(question: str, original: str) -> str:
+    """A question about one specific message, with that message quoted back.
+
+    A group holds a dozen messages a minute. Without the quote the resident has no
+    way to tell which line the bot meant, which is what made the old bare
+    "Уточните данные сообщения" unreadable.
+    """
+    quoted = " ".join((original or "").split())
+    if not quoted:
+        return question
+    if len(quoted) > 140:
+        quoted = quoted[:137] + "…"
+    return f"{question}\n\nПро сообщение: «{quoted}»"
 
 
 def current_role(state: PollState | None, conversation_key: str, user_id: str) -> str:
@@ -839,6 +1012,41 @@ def role_denied_text(required: str) -> str:
         "В ДомПульсе житель сообщает и подтверждает, домоуправляющий принимает решение о передаче, "
         "а УК и исполнитель обрабатывают работу. Выберите свою рабочую роль в меню, если это демо-сценарий."
     )
+
+
+async def open_clarification(
+    adapter: MaxAdapter,
+    state: PollState,
+    message: IncomingMaxMessage,
+    result: dict[str, Any],
+    pending: str,
+) -> bool:
+    """Ask the author for what the pipeline could not work out.
+
+    The question goes to the author privately, quoting their own words, and the
+    pending state is keyed by person so the buttons returning from the private
+    chat find the right dialog. Returns False when the result needs no follow-up.
+    """
+    fallback = result.get("fallback") or {}
+    if not fallback or fallback.get("type") == "DUPLICATE_CONFIRMATION":
+        return False
+    classification = result.get("classification") or {}
+    dialog_values = {
+        "text": message.text,
+        "author_id": message.user_id,
+        "chat_id": message.chat_id,
+        "external_id": message.external_id,
+        "attachments": message.attachments,
+        "signal_id": (result.get("signal") or {}).get("id"),
+    }
+    if fallback.get("type") == "ZONE_CLARIFICATION" and classification.get("category"):
+        state.begin_dialog(pending, "report_zone", **dialog_values, category=str(classification["category"]), zone_choices=fallback.get("choices") or [])
+        choices = fallback.get("choices") or []
+        await send_reply(adapter, message, clarification_text("Я понял категорию. Уточните только место проблемы:", message.text), zone_keyboard(choices), private=True, ack=group_ack(result))
+        return True
+    state.begin_dialog(pending, "report_category", **dialog_values)
+    await send_reply(adapter, message, clarification_text("Уточните только категорию — место я определю по истории дома.", message.text), category_keyboard(), private=True, ack=group_ack(result))
+    return True
 
 
 async def handle_message(
@@ -864,10 +1072,11 @@ async def handle_message(
                 LOGGER.warning("Could not check permissions for chat %s: %s", message.chat_id, exc)
         state.remember_conversation(message, permissions)
     command = message.text.split(maxsplit=1)[0].lower()
+    pending = dialog_key(message.chat_id, message.user_id)
     if command in HOUSE_COMMANDS:
         house_id = HOUSE_COMMANDS[command]
         state.set_house(message, house_id)
-        await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения относятся к этому дому.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)))
+        await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения относятся к этому дому.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
         return
     house_id = state.house_for(message)
     if command in {"/start", "/help", "/menu", "/помощь", "/меню"}:
@@ -878,78 +1087,150 @@ async def handle_message(
                 message,
                 help_text(house_id, role) + "\n\nДля демо выберите рабочую роль — от неё зависят доступные действия.",
                 role_keyboard(),
+                private=True,
             )
         else:
-            await send_reply(adapter, message, help_text(house_id, role), menu_keyboard(role))
+            await send_reply(adapter, message, help_text(house_id, role), menu_keyboard(role), private=True)
         return
     if command in {"/back", "/назад"}:
-        dialog = state.dialog(message.conversation_key)
+        dialog = state.dialog(pending)
         if dialog and dialog.get("mode") == "report_zone":
             preserved = {key: item for key, item in dialog.items() if key not in {"mode", "category"}}
-            state.begin_dialog(message.conversation_key, "report_category", **preserved)
-            await send_reply(adapter, message, "Вернулись к выбору категории:", category_keyboard())
+            state.begin_dialog(pending, "report_category", **preserved)
+            await send_reply(adapter, message, "Вернулись к выбору категории:", category_keyboard(), private=True)
         else:
-            state.clear_dialog(message.conversation_key)
-            await send_reply(adapter, message, "Главное меню:", menu_keyboard(current_role(state, message.conversation_key, message.user_id)))
+            state.clear_dialog(pending)
+            await send_reply(adapter, message, "Главное меню:", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
         return
     if command in {"/cancel", "/отмена"}:
-        state.clear_dialog(message.conversation_key)
-        await send_reply(adapter, message, "Диалог отменён. Выберите действие:", menu_keyboard(current_role(state, message.conversation_key, message.user_id)))
+        state.clear_dialog(pending)
+        await send_reply(adapter, message, "Диалог отменён. Выберите действие:", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
         return
-    dialog = state.dialog(message.conversation_key)
+    dialog = state.dialog(pending)
     if dialog and dialog.get("mode") == "report_text":
         # First try the complete message. Clarification is only shown when the
         # structured pipeline really lacks context; a clear message such as
         # “лифт во втором подъезде” goes straight to an Issue.
         result = await api.process_message(message, house_id)
-        issue = result.get("issue")
-        initiative = result.get("initiative")
-        if issue or initiative or result.get("result") == "NO_ACTION":
-            state.clear_dialog(message.conversation_key)
-            attachments = None
-            if issue:
-                state.watch_issue(message, issue)
-                attachments = issue_keyboard(issue, miniapp_url, bot_username, current_role(state, message.conversation_key, message.user_id))
-            elif initiative:
-                attachments = initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id))
-            await send_reply(adapter, message, format_result(result, miniapp_url), attachments)
+        if result.get("issue") or result.get("initiative") or result.get("result") == "NO_ACTION" or result.get("fallback"):
+            state.clear_dialog(pending)
+            await announce_result(adapter, state, message, result, miniapp_url, bot_username, pending)
             return
-        classification = result.get("classification") or {}
-        fallback = result.get("fallback") or {}
-        dialog_values = {
-            "text": message.text,
-            "author_id": message.user_id,
-            "chat_id": message.chat_id,
-            "external_id": message.external_id,
-            "attachments": message.attachments,
-            "signal_id": (result.get("signal") or {}).get("id"),
-        }
-        if fallback.get("type") == "ZONE_CLARIFICATION" and classification.get("category"):
-            state.begin_dialog(message.conversation_key, "report_zone", **dialog_values, category=str(classification["category"]))
-            choices = fallback.get("choices") or []
-            await send_reply(adapter, message, "Я понял категорию. Уточните только место проблемы:", zone_keyboard(choices))
-            return
-        state.begin_dialog(message.conversation_key, "report_category", **dialog_values)
-        await send_reply(adapter, message, "Уточните только категорию — место я определю по истории дома.", category_keyboard())
+        role = current_role(state, message.conversation_key, message.user_id)
+        await send_reply(adapter, message, format_result(result, miniapp_url), fallback_keyboard(result, role), private=True, ack=group_ack(result))
         return
     if dialog and dialog.get("mode") == "initiative_text":
         initiative = await api.create_initiative(house_id, "Инициатива жителей", message.text)
-        state.clear_dialog(message.conversation_key)
-        await send_reply(adapter, message, format_initiative(initiative), initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id)))
+        state.clear_dialog(pending)
+        await send_reply(
+            adapter,
+            message,
+            format_initiative(initiative),
+            initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id)),
+            private=True,
+            ack="✅ Инициатива создана. Опрос в личке." if message.chat_id else None,
+        )
+        return
+    if dialog and dialog.get("mode") in {"report_zone", "report_category"}:
+        # A new report matters more than finishing the old question, so try it
+        # first: if it is understood it replaces the pending question, otherwise
+        # the buttons are offered again. Free text used to be treated as a new
+        # report and silently lost the answer to the pending one.
+        fresh = await api.process_message(message, house_id)
+        if is_recognized_result(fresh):
+            state.clear_dialog(pending)
+            await announce_result(adapter, state, message, fresh, miniapp_url, bot_username, pending)
+            return
+        if message.chat_id:
+            # Chatter in the house chat must not restart the reminder for a
+            # question only its author can see.
+            return
+        if dialog["mode"] == "report_zone":
+            question, keyboard = "Осталось выбрать место — нажмите кнопку ниже.", zone_keyboard(dialog.get("zone_choices") or [])
+        else:
+            question, keyboard = "Осталось выбрать категорию — нажмите кнопку ниже.", category_keyboard()
+        await send_reply(adapter, message, clarification_text(question, str(dialog.get("text") or "")), keyboard, private=True)
         return
     if command in {"/status", "/состояние"}:
         status = await api.house_status(house_id)
         role = current_role(state, message.conversation_key, message.user_id)
-        await send_reply(adapter, message, format_status(status, role), status_keyboard(status, role))
+        await send_reply(adapter, message, format_status(status, role), status_keyboard(status, role), private=True)
         return
     result = await api.process_message(message, house_id)
+    await announce_result(adapter, state, message, result, miniapp_url, bot_username, pending)
+
+
+async def announce_result(
+    adapter: MaxAdapter,
+    state: PollState,
+    message: IncomingMaxMessage,
+    result: dict[str, Any],
+    miniapp_url: str,
+    bot_username: str,
+    pending: str,
+) -> None:
+    """Turn a processed message into what the house chat and the author see.
+
+    The chat gets one line when the message was a house matter and nothing at all
+    otherwise; the author always gets the card, the buttons and any question.
+    """
+    if await open_clarification(adapter, state, message, result, pending):
+        return
+    if message.chat_id and not is_recognized_result(result):
+        LOGGER.info("Kept quiet about unrecognised message %s in chat %s", message.external_id, message.chat_id)
+        return
+    role = current_role(state, message.conversation_key, message.user_id)
     attachments = None
     if issue := result.get("issue"):
         state.watch_issue(message, issue)
-        attachments = issue_keyboard(issue, miniapp_url, bot_username, current_role(state, message.conversation_key, message.user_id))
+        attachments = issue_keyboard(issue, miniapp_url, bot_username, role)
     elif initiative := result.get("initiative"):
-        attachments = initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id))
-    await send_reply(adapter, message, format_result(result, miniapp_url), attachments)
+        attachments = initiative_keyboard(initiative, bot_username, role)
+    if (result.get("fallback") or {}).get("type") == "DUPLICATE_CONFIRMATION":
+        state.remember_duplicate_chat(str((result.get("signal") or {}).get("id") or ""), message.chat_id)
+    await send_reply(adapter, message, format_result(result, miniapp_url), attachments or fallback_keyboard(result, role), private=True, ack=group_ack(result))
+
+
+async def resolve_duplicate(
+    adapter: MaxAdapter,
+    api: DomPulsApi,
+    callback: IncomingMaxCallback,
+    signal_id: str,
+    candidate_issue_id: str,
+    decision: str,
+    miniapp_url: str,
+    bot_username: str,
+    state: PollState | None = None,
+) -> None:
+    """Answer the "is this the same problem?" question the API asked.
+
+    Until this existed the bot printed an unexplained clarification and stopped,
+    leaving the signal attached to nothing.
+    """
+    role = current_role(state, callback.conversation_key, callback.user_id)
+    if decision not in {"LINK", "CREATE_NEW"}:
+        await adapter.answer_callback(callback.callback_id, notification="Не удалось распознать решение")
+        return
+    try:
+        issue = await api.resolve_duplicate(signal_id, candidate_issue_id, decision, callback.user_id)
+    except Exception:
+        LOGGER.exception("Could not resolve duplicate %s as %s", signal_id, decision)
+        await adapter.answer_callback(callback.callback_id, notification="Не удалось сохранить решение")
+        return
+    if state:
+        state.watch_callback(callback, issue)
+    if decision == "LINK":
+        text = f"**Спасибо, сообщение объединено**\n\n{localized_issue_title(issue)}\n\nТеперь у этой проблемы на одно подтверждение больше."
+    else:
+        text = f"**Создана отдельная проблема**\n\n{format_result({'issue': issue}, miniapp_url)}"
+    # The buttons sit in a private chat, so the house chat is told separately.
+    if state and (chat_id := state.pop_duplicate_chat(signal_id)):
+        await adapter.send_message(text=group_ack({"issue": issue, "clustered": decision == "LINK"}) or "", chat_id=chat_id)
+    await adapter.answer_callback(
+        callback.callback_id,
+        notification="Решение сохранено",
+        message=callback_message(callback, text, issue_keyboard(issue, miniapp_url, bot_username, role)),
+    )
 
 
 async def handle_callback(
@@ -964,11 +1245,21 @@ async def handle_callback(
     if not separator:
         await adapter.answer_callback(callback.callback_id, notification="Неизвестное действие")
         return
+    if action == "duplicate":
+        # Payload is "duplicate:<signal_id>:<candidate_issue_id>:<decision>": three
+        # values do not fit the two-field form every other action uses.
+        parts = callback.payload.split(":")
+        if len(parts) != 4:
+            await adapter.answer_callback(callback.callback_id, notification="Неизвестное действие")
+            return
+        await resolve_duplicate(adapter, api, callback, parts[1], parts[2], parts[3], miniapp_url, bot_username, state)
+        return
     conversation_key = callback.conversation_key
+    pending = dialog_key(callback.chat_id, callback.user_id)
     role = current_role(state, conversation_key, callback.user_id)
     if action == "menu":
         if value == "report":
-            state and state.begin_dialog(conversation_key, "report_text")
+            state and state.begin_dialog(pending, "report_text")
             await adapter.answer_callback(
                 callback.callback_id,
                 notification="Опишите проблему одним сообщением",
@@ -976,7 +1267,7 @@ async def handle_callback(
             )
             return
         if value == "initiative":
-            state and state.begin_dialog(conversation_key, "initiative_text")
+            state and state.begin_dialog(pending, "initiative_text")
             await adapter.answer_callback(
                 callback.callback_id,
                 notification="Напишите предложение",
@@ -1039,7 +1330,7 @@ async def handle_callback(
             await adapter.answer_callback(callback.callback_id, notification="Подсказка", message=callback_message(callback, help_text(house_id, role), menu_keyboard(role)))
             return
         if value == "cancel":
-            state and state.clear_dialog(conversation_key)
+            state and state.clear_dialog(pending)
             await adapter.answer_callback(callback.callback_id, notification="Диалог отменён", message=callback_message(callback, "Выберите следующее действие:", menu_keyboard(role)))
             return
     if action == "role":
@@ -1053,10 +1344,10 @@ async def handle_callback(
         )
         return
     if action == "back":
-        dialog = state.dialog(conversation_key) if state else None
+        dialog = state.dialog(pending) if state else None
         if value == "category" and state and dialog and dialog.get("mode") == "report_zone":
-            preserved = {key: item for key, item in dialog.items() if key not in {"mode", "category"}}
-            state.begin_dialog(conversation_key, "report_category", **preserved)
+            preserved = {key: item for key, item in dialog.items() if key not in {"mode", "category", "zone_choices"}}
+            state.begin_dialog(pending, "report_category", **preserved)
             await adapter.answer_callback(
                 callback.callback_id,
                 notification="Выберите категорию",
@@ -1069,7 +1360,7 @@ async def handle_callback(
             await adapter.answer_callback(callback.callback_id, notification="Вернулись к состоянию дома", message=callback_message(callback, format_status(status, role), status_keyboard(status, role)))
             return
         if state:
-            state.clear_dialog(conversation_key)
+            state.clear_dialog(pending)
         await adapter.answer_callback(callback.callback_id, notification="Главное меню", message=callback_message(callback, "Выберите действие:", menu_keyboard(role)))
         return
     required_role = {
@@ -1100,11 +1391,11 @@ async def handle_callback(
         await adapter.answer_callback(callback.callback_id, notification="Дом выбран", message=callback_message(callback, f"Дом переключён: {house_label(value)}\n\nТеперь сообщения в этом чате относятся к выбранному дому.", menu_keyboard(role)))
         return
     if action == "category":
-        if not state or not state.dialog(conversation_key) or state.dialog(conversation_key).get("mode") != "report_category":
+        if not state or not state.dialog(pending) or state.dialog(pending).get("mode") != "report_category":
             await adapter.answer_callback(callback.callback_id, notification="Начните с кнопки «Сообщить о проблеме»")
             return
-        dialog = {key: item for key, item in state.dialog(conversation_key).items() if key != "mode"}
-        state.begin_dialog(conversation_key, "report_zone", **dialog, category=value)
+        dialog = {key: item for key, item in state.dialog(pending).items() if key != "mode"}
+        state.begin_dialog(pending, "report_zone", **dialog, category=value)
         house_id = state.house_for_key(conversation_key)
         status = await api.house_status(house_id)
         zones: dict[str, dict[str, str]] = {}
@@ -1115,7 +1406,7 @@ async def handle_callback(
         await adapter.answer_callback(callback.callback_id, notification="Теперь выберите место", message=callback_message(callback, "**Где это произошло?**", zone_keyboard(list(zones.values()))))
         return
     if action == "zone":
-        dialog = state.dialog(conversation_key) if state else None
+        dialog = state.dialog(pending) if state else None
         if not state or not dialog or dialog.get("mode") != "report_zone":
             await adapter.answer_callback(callback.callback_id, notification="Диалог устарел. Начните заново.")
             return
@@ -1130,11 +1421,18 @@ async def handle_callback(
             result = await api.resolve_signal(str(dialog["signal_id"]), str(dialog["category"]), value)
         else:
             result = await api.process_message(message, state.house_for_key(conversation_key), manual_category=str(dialog["category"]), manual_zone_id=value)
-        state.clear_dialog(conversation_key)
+        state.clear_dialog(pending)
         issue = result.get("issue")
         if issue:
             state.watch_issue(message, issue)
         attachments = issue_keyboard(issue, miniapp_url, bot_username, role) if issue else menu_keyboard(role)
+        # answer_callback can only edit the card where it already sits, which is
+        # the private chat. The house chat still has to learn that the report is
+        # now registered, after the clarification it was still waiting for.
+        if chat_id := dialog.get("chat_id"):
+            ack = group_ack(result)
+            if ack:
+                await adapter.send_message(text=ack, chat_id=chat_id)
         await adapter.answer_callback(callback.callback_id, notification="Сигнал обработан", message=callback_message(callback, format_result(result, miniapp_url), attachments))
         return
     if action == "open_issue":
@@ -1238,6 +1536,10 @@ async def handle_callback(
     if action in {"verify_yes", "verify_no"}:
         result = "confirmed" if action == "verify_yes" else "rejected"
         issue = await api.verify(value, callback.user_id, result)
+        if state:
+            # Without this the watcher keeps the state from before the check and
+            # the resident stops hearing about what happens to the problem next.
+            state.watch_callback(callback, issue)
         notification = "Спасибо, результат подтверждён" if result == "confirmed" else "Проблема переоткрыта"
         await adapter.answer_callback(
             callback.callback_id,
@@ -1273,16 +1575,25 @@ async def notify_state_changes(
                     f"{issue_next_step(issue)}"
                 )
                 role = state.role_for(conversation_key, str(watcher.get("user_id") or ""))
-                await adapter.send_message(
-                    text=text,
-                    chat_id=watcher.get("chat_id"),
-                    user_id=None if watcher.get("chat_id") else watcher.get("user_id"),
-                    attachments=(
-                        issue_keyboard(issue, miniapp_url, bot_username, role)
-                        if current_state == "DONE_PENDING_VERIFICATION"
-                        else notification_keyboard(issue)
-                    ),
+                attachments = (
+                    issue_keyboard(issue, miniapp_url, bot_username, role)
+                    if current_state == "DONE_PENDING_VERIFICATION"
+                    else notification_keyboard(issue)
                 )
+                # The house chat follows the job with one line, so neighbours see
+                # that something is being done; the card and the actions for the
+                # next role stay with the person who reported it.
+                if chat_id := watcher.get("chat_id"):
+                    await adapter.send_message(
+                        text=f"🔧 {short_issue_title(issue)}: {state_label(previous_state)} → {state_label(current_state)}",
+                        chat_id=chat_id,
+                    )
+                try:
+                    await adapter.send_message(text=text, user_id=watcher.get("user_id"), attachments=attachments)
+                except MaxAdapterError:
+                    LOGGER.warning("Direct message to user %s failed; posting the update in chat %s", watcher.get("user_id"), watcher.get("chat_id"))
+                    if watcher.get("chat_id"):
+                        await adapter.send_message(text=text, chat_id=watcher["chat_id"], attachments=attachments)
             watcher["last_state"] = current_state
             changed = True
     if changed:

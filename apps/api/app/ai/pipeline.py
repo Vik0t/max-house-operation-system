@@ -11,19 +11,51 @@ from ..schemas import ExtractedZone, StructuredExtraction
 
 ISSUE_KEYWORDS = {
     "elevator": ("лифт", "застрял", "кабина"),
-    "lighting": ("свет", "ламп", "фонар"),
-    "water": ("вод", "теч", "протеч"),
-    "heating": ("отоп", "батар", "холодно"),
-    "cleaning": ("гряз", "уборк", "мусор"),
-    "door": ("двер", "домофон", "замок"),
+    "lighting": ("свет", "ламп", "фонар", "освещ"),
+    "water": ("вод", "теч", "протеч", "кран", "труб"),
+    "heating": ("отоп", "батар", "холодно", "радиатор", "тепл"),
+    "cleaning": ("гряз", "уборк", "мусор", "подвал"),
+    "door": ("двер", "домофон", "замок", "ворота"),
 }
 INITIATIVE_MARKERS = ("нужно", "предлагаю", "поставить", "установить", "давайте", "хотелось", "второй фонарь")
 CONFIRM_MARKERS = ("у меня тоже", "тоже не", "подтверждаю", "да, не работает")
 RECURRENCE_MARKERS = ("опять", "снова", "уже", "вчера", "третий раз", "повтор")
+# A report does not have to name one of the six categories above. Residents write
+# "окно разбито" or "трещина на стене" and expect a card, not silence, so a plain
+# statement that something is broken is a report on its own. The category stays
+# "other" and the bot then asks only for the location.
+BROKEN_MARKERS = (
+    "разбил",
+    "разбит",
+    "разбито",
+    "слома",
+    "слом",
+    "не работа",
+    "неисправ",
+    "выбит",
+    "потёк",
+    "потек",
+    "течёт",
+    "трещин",
+    "залил",
+    "залило",
+    "прорв",
+    "отвалил",
+    "заклинил",
+    "перегор",
+    "замёрз",
+    "замерз",
+)
 
 
 class AIPipelineUnavailable(RuntimeError):
     pass
+
+
+def has_broken_marker(text: str) -> bool:
+    """Whether the text says something in the house is broken."""
+    lowered = text.lower()
+    return any(marker in lowered for marker in BROKEN_MARKERS)
 
 
 def detect_actionability(text: str) -> tuple[bool, float]:
@@ -31,16 +63,14 @@ def detect_actionability(text: str) -> tuple[bool, float]:
     matches = sum(keyword in lowered for values in ISSUE_KEYWORDS.values() for keyword in values)
     matches += sum(marker in lowered for marker in INITIATIVE_MARKERS)
     score = min(0.99, 0.2 + matches * 0.22)
-    return matches > 0 or any(marker in lowered for marker in CONFIRM_MARKERS), score
+    return matches > 0 or has_broken_marker(lowered) or any(marker in lowered for marker in CONFIRM_MARKERS), score
 
 
 def classify_intent(text: str) -> str:
     lowered = text.lower()
     if any(marker in lowered for marker in CONFIRM_MARKERS):
         return "confirmation"
-    if any(marker in lowered for marker in INITIATIVE_MARKERS) and not any(
-        broken in lowered for broken in ("не работает", "слом", "перегор", "теч")
-    ):
+    if any(marker in lowered for marker in INITIATIVE_MARKERS) and not has_broken_marker(lowered):
         return "initiative"
     actionable, _ = detect_actionability(text)
     return "issue" if actionable else "noise"
@@ -63,7 +93,7 @@ def extract_structured(text: str, *, force_failure: bool = False) -> StructuredE
         (number for prefix, number in ordinal_map.items() if prefix in lowered and "подъезд" in lowered), None
     )
     zone_type = "parking" if "парков" in lowered else ("entrance" if "подъезд" in lowered or zone_number else None)
-    symptom = "not_working" if any(word in lowered for word in ("не работает", "встал", "слом", "перегор")) else "proposal"
+    symptom = "not_working" if has_broken_marker(lowered) or "встал" in lowered else "proposal"
     missing: list[str] = []
     if intent == "issue" and not zone_type:
         missing.append("zone")
