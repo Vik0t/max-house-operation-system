@@ -112,6 +112,11 @@ class Action(Base, TimestampMixin):
     rationale: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     requires_human_confirmation: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Machine-readable manual choice from POST /issues/{id}/route
+    # ("management_org" | "representative" | None). Submit honors it; without
+    # this the representative's button only changed the label while the
+    # submission always followed the config routing.
+    manual_destination: Mapped[str | None] = mapped_column(String(40), nullable=True)
     provenance: Mapped[str] = mapped_column(String(30), default=Provenance.CALCULATED.value)
     issue: Mapped[Issue] = relationship(back_populates="actions")
 

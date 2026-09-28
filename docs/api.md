@@ -20,8 +20,8 @@ Interactive schema is available at `/docs`; OpenAPI JSON is at `/openapi.json`.
 - `GET /issues?house_id=...`
 - `GET /issues/{id}`
 - `POST /issues/{id}/confirm`
-- `POST /issues/{id}/route` — ручной выбор адресата при низкой уверенности маршрутизации
-- `POST /issues/{id}/submit`
+- `POST /issues/{id}/route` — ручной выбор адресата при низкой уверенности маршрутизации; выбор сохраняется на действии и учитывается при передаче
+- `POST /issues/{id}/submit` — отправляет по выбранному вручную адресату, иначе по роутингу категории из конфига дома
 - `POST /issues/{id}/accept`
 - `POST /issues/{id}/verify`
 

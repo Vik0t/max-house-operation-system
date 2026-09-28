@@ -217,6 +217,30 @@ def test_representative_can_select_manual_route(client):
     assert "управляющ" in routed.json()["actions"][-1]["rationale"]
 
 
+def test_manual_route_choice_decides_submit_destination(client):
+    client.post("/issues/demo-current-elevator-issue/confirm", json={"actor_id": "representative-demo"})
+    routed = client.post(
+        "/issues/demo-current-elevator-issue/route",
+        json={"destination": "representative", "actor_id": "representative-demo"},
+    )
+    assert routed.status_code == 200
+    assert routed.json()["actions"][-1]["manual_destination"] == "representative"
+    submitted = client.post("/issues/demo-current-elevator-issue/submit", json={"actor_id": "representative-demo"})
+    assert submitted.status_code == 200
+    submission = submitted.json()["submissions"][-1]
+    assert submission["destination_type"] == "representative"
+    assert submission["destination_id"] == "representative-house-a"
+
+
+def test_submit_without_manual_route_follows_config(client):
+    client.post("/issues/demo-current-elevator-issue/confirm", json={"actor_id": "representative-demo"})
+    submitted = client.post("/issues/demo-current-elevator-issue/submit", json={"actor_id": "representative-demo"})
+    assert submitted.status_code == 200
+    submission = submitted.json()["submissions"][-1]
+    assert submission["destination_type"] == "management_org"
+    assert submitted.json()["actions"][-1]["manual_destination"] is None
+
+
 def test_initiative_same_vote_is_idempotent(client):
     path = "/initiatives/seed-parking-light-initiative/poll"
     vote = {"voter_id": "max-user-42", "option": "У въезда"}
