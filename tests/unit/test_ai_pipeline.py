@@ -39,6 +39,18 @@ def test_broken_object_outside_the_six_categories_is_still_a_report():
     assert result.missing_fields == ["zone"]
 
 
+def test_leak_reports_are_recognized_as_issues():
+    # "потолок протекает" used to be noise: neither the water keywords ("теч"
+    # does not match "протекает") nor the broken markers covered it.
+    result = extract_structured("потолок протекает над колясочной")
+    assert result.intent == "issue"
+    assert result.actionable is True
+    assert result.symptom == "not_working"
+    assert classify_intent("соседи сверху затопили ванную") == "issue"
+    # ...but the new markers must not fire on ordinary chatter.
+    assert classify_intent("привет всем") == "noise"
+
+
 def test_breakage_words_do_not_turn_small_talk_into_a_report():
     assert classify_intent("привет всем") == "noise"
     assert classify_intent("кто идёт в магазин") == "noise"

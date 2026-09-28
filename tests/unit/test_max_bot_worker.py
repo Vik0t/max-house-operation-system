@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.bot_worker import PollState, cancel_keyboard, fallback_keyboard, format_result, format_status, group_ack, handle_callback, handle_message, help_text, initiative_keyboard, is_recognized_result, issue_button_label, issue_keyboard, menu_keyboard, notify_state_changes, zone_keyboard
+from app.bot_worker import CATEGORY_LABELS, PollState, cancel_keyboard, category_keyboard, fallback_keyboard, format_result, format_status, group_ack, handle_callback, handle_message, help_text, initiative_keyboard, is_recognized_result, issue_button_label, issue_keyboard, menu_keyboard, notify_state_changes, zone_keyboard
 from app.integrations.max_adapter import MaxAdapterError
 from app.integrations.max_updates import IncomingMaxCallback, parse_incoming_callback, parse_incoming_message, polling_is_active
 
@@ -416,20 +416,28 @@ def test_private_reply_falls_back_to_chat_when_direct_message_fails(tmp_path):
     assert "Не смог открыть личный чат" in sent[1]["text"]
 
 
-def test_role_chosen_privately_applies_in_the_group_conversation(tmp_path):
+def test_role_chosen_privately_stays_private(tmp_path):
     state = PollState(str(tmp_path / "state.json"), "demo-house-a")
     state.set_role("user:42", "42", "uk")
-    assert state.role_for("chat:77", "42") == "uk"
+    assert state.role_for("user:42", "42") == "uk"
+    assert state.has_role("user:42", "42") is True
+    # The house group must not inherit it: operator buttons stay hidden there
+    # until the role is picked in the group itself.
+    assert state.role_for("chat:77", "42") == "resident"
+    assert state.has_role("chat:77", "42") is False
     assert state.role_for("chat:77", "99") == "resident"
 
 
-def test_user_role_fallback_persists_and_reads_older_state_files(tmp_path):
+def test_state_files_from_before_role_isolation_still_load(tmp_path):
     path = tmp_path / "state.json"
-    PollState(str(path), "demo-house-a").set_role("user:42", "42", "executor")
-    assert PollState(str(path), "demo-house-a").role_for("chat:77", "42") == "executor"
-    path.write_text(json.dumps({"roles": {"chat:77": {"42": "uk"}}}), encoding="utf-8")
+    path.write_text(
+        json.dumps({"roles": {"chat:77": {"42": "uk"}}, "user_roles": {"42": "executor"}}),
+        encoding="utf-8",
+    )
     restored = PollState(str(path), "demo-house-a")
+    # Per-conversation roles win; the legacy global fallback is ignored.
     assert restored.role_for("chat:77", "42") == "uk"
+    assert restored.role_for("user:42", "42") == "resident"
     assert restored.role_for("chat:77", "99") == "resident"
 
 
@@ -658,7 +666,8 @@ def test_role_picker_remembers_the_role_for_the_next_messages(tmp_path):
         )
     )
     assert state.role_for("chat:77", "42") == "uk"
-    assert state.role_for("user:42", "42") == "uk"
+    assert state.role_for("user:42", "42") == "resident"
+    assert state.has_role("user:42", "42") is False
 
 
 def test_actions_are_refused_when_the_role_does_not_match(tmp_path):
@@ -866,3 +875,13 @@ def test_duplicate_callback_links_the_signal_to_the_existing_issue(tmp_path):
     assert api.calls == [("signal-9", "issue-7", "LINK", "42")]
     assert "объединено" in adapter.answer["text"]
     assert state.watchers["issue-7"]["chat:77"]["last_state"] == "NEEDS_CONFIRMATION"
+
+
+def test_category_keyboard_covers_every_known_category():
+    payloads = set()
+    for row in category_keyboard()[0]["payload"]["buttons"]:
+        for button in row:
+            if button.get("payload", "").startswith("category:"):
+                payloads.add(button["payload"])
+    for category in CATEGORY_LABELS:
+        assert f"category:{category}" in payloads, f"no button for {category}"

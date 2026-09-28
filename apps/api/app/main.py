@@ -782,6 +782,7 @@ def select_issue_route(issue_id: str, payload: RouteSelectionRequest, db: Sessio
     else:
         action.suggested_destination = f"Домоуправляющий · {house.address}"
         action.rationale = "Адресат выбран домоуправляющим для ручной проверки обращения."
+    action.manual_destination = payload.destination
     action.confidence = 1.0
     audit(db, "Issue", issue.id, "ROUTE_SELECTED", payload.actor_id, details={"destination": payload.destination})
     commit(db)
@@ -818,12 +819,22 @@ def submit_issue(issue_id: str, payload: SubmitRequest, db: Session = Depends(ge
         raise HTTPException(status_code=409, detail="Issue has no confirmed action")
     action = issue.actions[-1]
     config = get_house_config(issue.house_id)
-    route = config.routing.get(issue.category) or config.routing["default"]
+    # A manual route choice wins over the config routing; otherwise the
+    # "Выбрать адресата" button would only repaint the label.
+    if action.manual_destination == "management_org":
+        house = db.get(House, issue.house_id) or not_found("House", issue.house_id)
+        destination_type, destination_id = "management_org", house.management_org
+    elif action.manual_destination == "representative":
+        default_route = config.routing["default"]
+        destination_type, destination_id = default_route.destination_type, default_route.destination
+    else:
+        route = config.routing.get(issue.category) or config.routing["default"]
+        destination_type, destination_id = route.destination_type, route.destination
     submission = Submission(
         issue=issue,
         action_id=action.id,
-        destination_type=route.destination_type,
-        destination_id=route.destination,
+        destination_type=destination_type,
+        destination_id=destination_id,
         channel="demo_uk_portal",
         is_simulated=True,
     )

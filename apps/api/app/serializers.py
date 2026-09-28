@@ -48,6 +48,7 @@ def action_dict(action: Action):
         "id": action.id,
         "type": action.type,
         "suggested_destination": action.suggested_destination,
+        "manual_destination": action.manual_destination,
         "rationale": action.rationale,
         "confidence": action.confidence,
         "requires_human_confirmation": action.requires_human_confirmation,

@@ -159,14 +159,11 @@ class PollState:
         self.watchers: dict[str, dict[str, dict[str, str | None]]] = {}
         self.conversations: dict[str, dict[str, Any]] = {}
         self.dialogs: dict[str, dict[str, Any]] = {}
-        # Roles are deliberately scoped to a MAX user and conversation. A group
-        # chat can therefore contain a resident, representative and contractor
-        # without exposing operator controls to everybody. user_roles keeps the
-        # most recent choice per user as a fallback: navigation happens in the
-        # private chat while issue cards live in the group, so a role picked in
-        # one conversation must still apply in the other.
+        # Roles are deliberately scoped to a conversation: a group chat can
+        # contain a resident, a representative and a contractor at the same
+        # time without exposing operator controls to everybody, and a role
+        # picked in a private chat never leaks into the house group.
         self.roles: dict[str, dict[str, str]] = {}
-        self.user_roles: dict[str, str] = {}
         # signal_id -> chat the duplicate question was asked from, so the house
         # chat can be told about the decision made in a private chat.
         self.duplicate_chats: dict[str, str] = {}
@@ -182,7 +179,6 @@ class PollState:
             self.conversations = raw.get("conversations") or {}
             self.dialogs = raw.get("dialogs") or {}
             self.roles = raw.get("roles") or {}
-            self.user_roles = raw.get("user_roles") or {}
             self.duplicate_chats = raw.get("duplicate_chats") or {}
         except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
             self.marker = None
@@ -191,7 +187,6 @@ class PollState:
             self.conversations = {}
             self.dialogs = {}
             self.roles = {}
-            self.user_roles = {}
             self.duplicate_chats = {}
 
     def remember_duplicate_chat(self, signal_id: str, chat_id: str | None) -> None:
@@ -232,20 +227,20 @@ class PollState:
         self.save()
 
     def role_for(self, conversation_key: str, user_id: str) -> str:
-        user_id = str(user_id)
-        role = (self.roles.get(conversation_key) or {}).get(user_id) or self.user_roles.get(user_id, "resident")
+        # Roles are per conversation: a role picked in a private chat must not
+        # leak into the house group (and vice versa), otherwise choosing
+        # "УК" once would silently grant operator buttons everywhere.
+        role = (self.roles.get(conversation_key) or {}).get(str(user_id), "resident")
         return role if role in ROLE_LABELS else "resident"
 
     def has_role(self, conversation_key: str, user_id: str) -> bool:
-        user_id = str(user_id)
-        return user_id in (self.roles.get(conversation_key) or {}) or user_id in self.user_roles
+        return str(user_id) in (self.roles.get(conversation_key) or {})
 
     def set_role(self, conversation_key: str, user_id: str, role: str) -> None:
         if role not in ROLE_LABELS:
             role = "resident"
         user_id = str(user_id)
         self.roles.setdefault(conversation_key, {})[user_id] = role
-        self.user_roles[user_id] = role
         self.save()
 
     def set_marker(self, marker: int | None) -> None:
@@ -304,7 +299,6 @@ class PollState:
                     "conversations": self.conversations,
                     "dialogs": self.dialogs,
                     "roles": self.roles,
-                    "user_roles": self.user_roles,
                     "duplicate_chats": self.duplicate_chats,
                 },
                 ensure_ascii=False,
@@ -493,7 +487,10 @@ def category_keyboard() -> list[dict[str, Any]]:
                 {"type": "callback", "text": "Вода / отопление", "payload": "category:water"},
                 {"type": "callback", "text": "Дверь / домофон", "payload": "category:door"},
             ],
-            [{"type": "callback", "text": "Другое", "payload": "category:other"}],
+            [
+                {"type": "callback", "text": "Парковка", "payload": "category:parking"},
+                {"type": "callback", "text": "Другое", "payload": "category:other"},
+            ],
             [menu_button()],
         ]
     )
@@ -704,7 +701,9 @@ def issue_keyboard(
         if current_order.get("evidence"):
             rows.append([{"type": "callback", "text": "Завершить работу", "payload": f"order_done:{issue_id}"}])
         else:
-            rows.append([{"type": "callback", "text": "Добавить фото выполнения", "payload": f"order_evidence:{issue_id}"}])
+            # The API has no photo upload from MAX yet; add_evidence records a
+            # demo evidence entry. The label must not promise a photo upload.
+            rows.append([{"type": "callback", "text": "Зафиксировать выполнение", "payload": f"order_evidence:{issue_id}"}])
     if role in {"resident", "legacy"} and issue.get("state") == "DONE_PENDING_VERIFICATION":
         rows.append(
             [
@@ -760,7 +759,7 @@ def issue_next_step(issue: dict[str, Any]) -> str:
     if state == "WORK_IN_PROGRESS":
         order = (issue.get("work_orders") or [])[-1:]
         if order and not order[0].get("evidence"):
-            return "Следующий шаг: исполнитель добавляет фото/комментарий выполнения."
+            return "Следующий шаг: исполнитель фиксирует выполнение (демо-запись без загрузки фото)."
         return "Следующий шаг: исполнитель завершает работу."
     if state == "DONE_PENDING_VERIFICATION":
         return "Следующий шаг: житель проверяет результат — исправлено или нужно переоткрыть."
@@ -812,7 +811,7 @@ def format_status(status: dict[str, Any], role: str = "resident", heading: str =
         "resident": "Ваши действия: подтвердить знакомую проблему или проверить завершённую работу.",
         "representative": "Ваши действия: домоуправляющий проверяет подтверждения и принимает решение о передаче в УК.",
         "uk": "Ваши действия: принять обращение, назначить работу и обновлять её состояние.",
-        "executor": "Ваши действия: открыть назначенную работу, добавить фото и завершить её.",
+        "executor": "Ваши действия: открыть назначенную работу, зафиксировать выполнение и завершить её.",
     }.get(role, "Откройте проблему, чтобы увидеть доступное действие.")
     return (
         f"**{heading}**\n"
@@ -912,7 +911,7 @@ def help_text(house_id: str, role: str = "resident") -> str:
         f"Текущий дом: {house_label(house_id)}\n"
         f"{role_text(role)}\n\n"
         "Команды: /состояние, /меню, /назад, /отмена, /помощь\n"
-        "В демо дом можно сменить кнопкой «Сменить дом» или командами /дом_a и /дом_b.\n"
+        "В демо дом можно сменить кнопкой «Сменить дом» или командами /дом_a и /дом_b. Смена действует на весь чат.\n"
         "Действия разделены по ролям: житель → домоуправляющий → УК → исполнитель."
     )
 
@@ -1076,7 +1075,7 @@ async def handle_message(
     if command in HOUSE_COMMANDS:
         house_id = HOUSE_COMMANDS[command]
         state.set_house(message, house_id)
-        await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения относятся к этому дому.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
+        await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения в этом чате относятся к этому дому. Смена действует для всех участников чата.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
         return
     house_id = state.house_for(message)
     if command in {"/start", "/help", "/menu", "/помощь", "/меню"}:
@@ -1085,7 +1084,7 @@ async def handle_message(
             await send_reply(
                 adapter,
                 message,
-                help_text(house_id, role) + "\n\nДля демо выберите рабочую роль — от неё зависят доступные действия.",
+                help_text(house_id, role) + "\n\nДля демо выберите рабочую роль — от неё зависят доступные действия. Роль выбирается отдельно для каждого чата.",
                 role_keyboard(),
                 private=True,
             )
@@ -1340,7 +1339,7 @@ async def handle_callback(
         await adapter.answer_callback(
             callback.callback_id,
             notification=f"Роль: {ROLE_LABELS[selected]}",
-            message=callback_message(callback, f"{role_text(selected)}\n\nТеперь бот покажет только вашу очередь задач. Житель подтверждает и проверяет результат; домоуправляющий принимает решение о передаче; УК назначает работу; исполнитель выполняет её.", menu_keyboard(selected)),
+            message=callback_message(callback, f"{role_text(selected)}\n\nРоль действует только в этом чате: в группе и в личке её нужно выбрать отдельно. Житель подтверждает и проверяет результат; домоуправляющий принимает решение о передаче; УК назначает работу; исполнитель выполняет её.", menu_keyboard(selected)),
         )
         return
     if action == "back":
@@ -1388,7 +1387,7 @@ async def handle_callback(
     if action == "house":
         if state:
             state.set_house_key(conversation_key, value)
-        await adapter.answer_callback(callback.callback_id, notification="Дом выбран", message=callback_message(callback, f"Дом переключён: {house_label(value)}\n\nТеперь сообщения в этом чате относятся к выбранному дому.", menu_keyboard(role)))
+        await adapter.answer_callback(callback.callback_id, notification="Дом выбран", message=callback_message(callback, f"Дом переключён: {house_label(value)}\n\nТеперь сообщения в этом чате относятся к выбранному дому. Смена действует для всех участников чата.", menu_keyboard(role)))
         return
     if action == "category":
         if not state or not state.dialog(pending) or state.dialog(pending).get("mode") != "report_category":
