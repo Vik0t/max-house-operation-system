@@ -1,5 +1,5 @@
 import type { HouseState } from '../types'
-import { issueAssetLabel } from '../labels'
+import { issueAssetLabel, pluralRu } from '../labels'
 import { StatusBadge } from './StatusBadge'
 
 const chevron = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
@@ -30,14 +30,8 @@ function fallbackZoneName(zoneId: string): string {
 }
 
 export function HouseOverview({ state, onIssue, onAsset }: Props) {
-  const zoneIssues = (state.zones || []).reduce<Record<string, { assetCount: number; issueCount: number; hasActive: boolean }>>((acc, zone) => {
-    acc[zone.id] = { assetCount: 0, issueCount: 0, hasActive: false }
-    return acc
-  }, {})
-  state.assets.reduce<Record<string, { assetCount: number; issueCount: number; hasActive: boolean }>>((acc, asset) => {
-    const zone = asset.zone_id
-    if (!acc[zone]) acc[zone] = { assetCount: 0, issueCount: 0, hasActive: false }
-    acc[zone].assetCount++
+  const zoneIssues = (state.zones || []).reduce<Record<string, { issueCount: number; hasActive: boolean }>>((acc, zone) => {
+    acc[zone.id] = { issueCount: 0, hasActive: false }
     return acc
   }, {})
 
@@ -72,7 +66,7 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
           </div>
           <div className="cell-content">
             <span className="cell-title">{zoneNames.get(zoneId) || fallbackZoneName(zoneId)}</span>
-            <span className="cell-subtitle">{info.hasActive ? `${info.issueCount} активн${info.issueCount === 1 ? 'ая' : 'ых'} проблем${info.issueCount === 1 ? 'а' : 'ы'}` : 'Нет активных проблем'}</span>
+            <span className="cell-subtitle">{info.hasActive ? `${info.issueCount} ${pluralRu(info.issueCount, 'активная проблема', 'активные проблемы', 'активных проблем')}` : 'Нет активных проблем'}</span>
           </div>
           <div className="cell-after">
             {info.hasActive ? <span className="counter counter--themed">{info.issueCount}</span> : <span className="counter" style={{ visibility: 'hidden' }}>0</span>}
@@ -98,7 +92,7 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
           </div>
           <div className="cell-content">
             <span className="cell-title">{issueAssetLabel(issue)}</span>
-            <span className="cell-subtitle">{issue.confirmations_count} подтверждений · {issue.recurrence_count}-й случай{issue.related_issue_count && issue.related_issue_count > 1 ? ` · ${issue.related_issue_count} сообщения` : ''}</span>
+            <span className="cell-subtitle">{issue.confirmations_count} {pluralRu(issue.confirmations_count, 'подтверждение', 'подтверждения', 'подтверждений')} · {issue.recurrence_count}-й случай{issue.related_issue_count && issue.related_issue_count > 1 ? ` · похожих обращений: ${issue.related_issue_count - 1}` : ''}</span>
           </div>
           <div className="cell-after">
             <StatusBadge value={issue.state} />
@@ -119,7 +113,7 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
             </div>
             <div className="cell-content">
               <span className="cell-title">{issueAssetLabel(issue)}</span>
-              <span className="cell-subtitle">{issue.confirmations_count} подтверждений · {issue.recurrence_count}-й случай</span>
+              <span className="cell-subtitle">{issue.confirmations_count} {pluralRu(issue.confirmations_count, 'подтверждение', 'подтверждения', 'подтверждений')} · {issue.recurrence_count}-й случай</span>
             </div>
             <div className="cell-after">
               <StatusBadge value={issue.state} />

@@ -87,6 +87,7 @@ export default function App() {
   const [photos, setPhotos] = useState<string[]>([])
   const [houseDraft, setHouseDraft] = useState<{ address: string; management_org: string; condition: string; lat: number | null; lng: number | null }>({ address: '', management_org: '', condition: '', lat: null, lng: null })
   const [resolvingAddress, setResolvingAddress] = useState(false)
+  const [mapNotice, setMapNotice] = useState<string | null>(null)
   const [fallback, setFallback] = useState<SignalResult['fallback']>()
   const [timeline, setTimeline] = useState<{ name: string; events: Array<Record<string, unknown>> } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -162,24 +163,26 @@ export default function App() {
   function closeTour() { setTourOpen(false); try { window.localStorage.setItem('dompuls-tour-v1', '1') } catch { /* ignore */ } }
   async function geocodeAddress() {
     const address = houseDraft.address.trim()
-    if (!address) { setError('Укажите адрес'); return }
-    if (!mapsConfigured) { setError('Поиск по карте недоступен: не задан ключ Яндекс.Карт'); return }
+    if (!address) { setMapNotice('Сначала введите адрес дома.'); return }
+    if (!mapsConfigured) { setMapNotice('Отметьте дом на карте: точку можно поставить вручную.'); return }
+    setMapNotice(null)
     try {
       const query = /кольцово/i.test(address) ? address : `${address}, Кольцово, Новосибирская область`
       const result = await geocodeYandex(query)
-      if (result) setHouseDraft((draft) => ({ ...draft, lat: result.lat, lng: result.lng, address: draft.address.trim() || result.address }))
-      else setError('Адрес не найден — поставьте точку на карте вручную')
-    } catch { setError('Не удалось найти адрес') }
+      if (result) { setHouseDraft((draft) => ({ ...draft, lat: result.lat, lng: result.lng, address: draft.address.trim() || result.address })); setMapNotice(null) }
+      else setMapNotice('Адрес не найден. Проверьте написание или отметьте дом на карте.')
+    } catch { setMapNotice('Поиск адреса сейчас недоступен. Отметьте дом на карте вручную.') }
   }
   function pickOnMap(lat: number, lng: number) {
     setHouseDraft((draft) => ({ ...draft, lat, lng }))
-    if (!mapsConfigured) { setError('Карта без ключа не определяет адрес — введите адрес вручную'); return }
+    setMapNotice(null)
+    if (!mapsConfigured) { setMapNotice('Точка отмечена. Введите адрес дома вручную.'); return }
     setResolvingAddress(true)
     setError(null)
     void reverseGeocode(lat, lng).then((address) => {
-      if (address) setHouseDraft((draft) => (draft.address.trim() ? draft : { ...draft, address }))
-      else setError('Не удалось определить адрес по точке — введите адрес вручную')
-    }).catch(() => setError('Не удалось определить адрес — введите адрес вручную'))
+      if (address) { setHouseDraft((draft) => (draft.address.trim() ? draft : { ...draft, address })); setMapNotice(null) }
+      else setMapNotice('Точка отмечена. Введите адрес дома вручную.')
+    }).catch(() => setMapNotice('Точка отмечена. Введите адрес дома вручную.'))
       .finally(() => setResolvingAddress(false))
   }
   function saveHouse() {
@@ -430,6 +433,7 @@ export default function App() {
         <div className="house-form">
           <input className="house-input" value={houseDraft.address} onChange={(event) => setHouseDraft((draft) => ({ ...draft, address: event.target.value }))} placeholder="Адрес: Никольский проспект, 1" />
           {houseDraft.lat != null && houseDraft.lng != null ? <span className="house-point">Точка: {houseDraft.lat.toFixed(5)}, {houseDraft.lng.toFixed(5)}{resolvingAddress ? ' · определяем адрес…' : ''}</span> : null}
+          {mapNotice ? <span className="house-point" role="status">{mapNotice}</span> : null}
           <div className="house-form-row">
             <input className="house-input" value={houseDraft.management_org} onChange={(event) => setHouseDraft((draft) => ({ ...draft, management_org: event.target.value }))} placeholder="Управляющая организация" />
             <input className="house-input" value={houseDraft.condition} onChange={(event) => setHouseDraft((draft) => ({ ...draft, condition: event.target.value }))} placeholder="Состояние дома" />

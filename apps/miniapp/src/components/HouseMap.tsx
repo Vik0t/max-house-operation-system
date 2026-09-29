@@ -64,6 +64,6 @@ export function HouseMap({ center, houses, selectedId, draft, onSelect, onPick }
 
   return <>
     <div className="house-map" ref={hostRef} role="application" aria-label="Карта домов Кольцово" />
-    <p className="map-hint">Нажмите на маркер, чтобы выбрать дом. Сведения из справочника жителей требуют проверки; карта работает без ключа.</p>
+    <p className="map-hint">Нажмите на дом, чтобы посмотреть его карточку, или отметьте точку нового дома на карте.</p>
   </>
 }
