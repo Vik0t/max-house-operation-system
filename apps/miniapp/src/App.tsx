@@ -682,7 +682,7 @@ export default function App() {
     <div className="bottom-spacer"></div>
 
     {/* ─── ISSUE PANEL (drawer) ────────────────────────────────────── */}
-    {issue ? <IssuePanel issue={issue} managementOrg={state?.house.management_org} viewerId={String(viewerId)} role={role} busy={busy} readOnly={!canWrite} onAction={runIssueAction} onComment={(text, commentPhotos) => void perform(async () => { setIssue(await api.comment(issue.id, text, role, String(viewerId), commentPhotos)); await refresh() })} onClose={() => setIssue(null)} onShare={shareCurrentIssue} onOpenRelated={openIssue} /> : null}
+    {issue ? <IssuePanel issue={issue} managementOrg={state?.house.management_org} viewerId={String(viewerId)} alreadyReported={Boolean(state?.my_issues?.some((item) => item.id === issue.id || item.related_issue_ids?.includes(issue.id)))} role={role} busy={busy} readOnly={!canWrite} onAction={runIssueAction} onComment={(text, commentPhotos) => void perform(async () => { setIssue(await api.comment(issue.id, text, role, String(viewerId), commentPhotos)); await refresh() })} onClose={() => setIssue(null)} onShare={shareCurrentIssue} onOpenRelated={openIssue} /> : null}
 
     {/* ─── TIMELINE DRAWER ────────────────────────────────────────── */}
     {timeline ? <div className="drawer-backdrop" role="presentation" onMouseDown={() => setTimeline(null)}>

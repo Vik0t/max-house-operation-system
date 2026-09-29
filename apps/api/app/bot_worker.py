@@ -167,6 +167,7 @@ class PollState:
         # signal_id -> chat the duplicate question was asked from, so the house
         # chat can be told about the decision made in a private chat.
         self.duplicate_chats: dict[str, str] = {}
+        self.confirmed_issues: dict[str, list[str]] = {}
         self.default_house_id = default_house_id
         self.load()
 
@@ -180,6 +181,7 @@ class PollState:
             self.dialogs = raw.get("dialogs") or {}
             self.roles = raw.get("roles") or {}
             self.duplicate_chats = raw.get("duplicate_chats") or {}
+            self.confirmed_issues = raw.get("confirmed_issues") or {}
         except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
             self.marker = None
             self.houses = {}
@@ -188,6 +190,16 @@ class PollState:
             self.dialogs = {}
             self.roles = {}
             self.duplicate_chats = {}
+            self.confirmed_issues = {}
+
+    def mark_confirmed(self, issue_id: str, user_id: str) -> None:
+        users = self.confirmed_issues.setdefault(str(issue_id), [])
+        if str(user_id) not in users:
+            users.append(str(user_id))
+            self.save()
+
+    def has_confirmed(self, issue_id: str, user_id: str) -> bool:
+        return str(user_id) in self.confirmed_issues.get(str(issue_id), [])
 
     def remember_duplicate_chat(self, signal_id: str, chat_id: str | None) -> None:
         if not signal_id or not chat_id:
@@ -300,6 +312,7 @@ class PollState:
                     "dialogs": self.dialogs,
                     "roles": self.roles,
                     "duplicate_chats": self.duplicate_chats,
+                    "confirmed_issues": self.confirmed_issues,
                 },
                 ensure_ascii=False,
             )
@@ -1528,7 +1541,7 @@ async def handle_callback(
         issue = await api.issue(value)
         if state:
             state.watch_callback(callback, issue)
-        await adapter.answer_callback(callback.callback_id, notification="Карточка проблемы", message=callback_message(callback, format_result({"issue": issue}, miniapp_url), issue_keyboard(issue, miniapp_url, bot_username, role, viewer_id=callback.user_id)))
+        await adapter.answer_callback(callback.callback_id, notification="Карточка проблемы", message=callback_message(callback, format_result({"issue": issue}, miniapp_url), issue_keyboard(issue, miniapp_url, bot_username, role, viewer_id=callback.user_id, reported_now=bool(state and state.has_confirmed(value, callback.user_id)))))
         return
     if action == "route":
         await adapter.answer_callback(
@@ -1560,6 +1573,7 @@ async def handle_callback(
         issue = result["issue"]
         if state:
             state.watch_callback(callback, issue)
+            state.mark_confirmed(value, callback.user_id)
         notification = "Вы уже подтверждали эту проблему" if result.get("idempotent_replay") else "Подтверждение учтено"
         await adapter.answer_callback(
             callback.callback_id,

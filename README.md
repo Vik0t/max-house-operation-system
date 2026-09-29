@@ -120,7 +120,7 @@ Suite покрывает:
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон: `103 passed`, включая 20 последовательных прогонов основного сценария; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон: `105 passed`, включая 20 последовательных прогонов основного сценария; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 

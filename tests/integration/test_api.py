@@ -43,6 +43,16 @@ def test_resident_is_not_asked_to_confirm_own_report_again(client):
     assert any(item["id"] == "demo-current-elevator-issue" and item["next_action"]["id"] == "confirm" for item in neighbor["my_tasks"])
 
 
+def test_neighbor_confirmation_moves_issue_from_task_to_my_issues(client):
+    before = client.get("/houses/demo-house-a/state", params={"viewer_id": "new-neighbor", "role": "resident"}).json()
+    assert any(item["id"] == "demo-current-elevator-issue" for item in before["my_tasks"])
+    response = client.post("/issues/demo-current-elevator-issue/resident-confirm", json={"actor_id": "new-neighbor"})
+    assert response.status_code == 200
+    after = client.get("/houses/demo-house-a/state", params={"viewer_id": "new-neighbor", "role": "resident"}).json()
+    assert all(item["id"] != "demo-current-elevator-issue" for item in after["my_tasks"])
+    assert any(item["id"] == "demo-current-elevator-issue" for item in after["my_issues"])
+
+
 def test_uk_queue_does_not_offer_second_assignment(client):
     issue_id = "demo-current-elevator-issue"
     client.post(f"/issues/{issue_id}/confirm", json={})

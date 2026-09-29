@@ -585,8 +585,18 @@ def house_state(
     zones = db.scalars(select(Zone).where(Zone.house_id == house_id)).all()
     initiatives = db.scalars(select(Initiative).where(Initiative.house_id == house_id, Initiative.state != InitiativeState.CLOSED.value)).all()
     issue_cards, history_issues = house_state_issue_cards(issues, assets, zones)
+    confirmed_ids = set(db.scalars(select(AuditEvent.entity_id).where(
+        AuditEvent.entity_type == "Issue",
+        AuditEvent.event_type == "RESIDENT_CONFIRMED",
+        AuditEvent.actor_id == viewer_id,
+    )).all()) if viewer_id else set()
+    def participated(card: dict[str, Any]) -> bool:
+        return bool(viewer_id and (
+            viewer_id in (card.get("related_signal_author_ids") or [])
+            or confirmed_ids.intersection(card.get("related_issue_ids") or [card["id"]])
+        ))
     my_issue_cards = (
-        [item for item in issue_cards if viewer_id and viewer_id in (item.get("related_signal_author_ids") or [])]
+        [item for item in issue_cards if participated(item)]
         if viewer_id
         else []
     )
@@ -594,7 +604,9 @@ def house_state(
         my_issue_cards.extend(
             issue_dict(item)
             for item in issues
-            if item.state not in ACTIVE_ISSUE_STATES and any(signal.author_id == viewer_id for signal in item.signals)
+            if item.state not in ACTIVE_ISSUE_STATES and (
+                item.id in confirmed_ids or any(signal.author_id == viewer_id for signal in item.signals)
+            )
         )
         my_issue_cards.sort(key=lambda item: item.get("last_seen_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     author_ids = {card["id"]: set(card.get("related_signal_author_ids") or []) for card in issue_cards}
@@ -608,7 +620,7 @@ def house_state(
         action = role_task_action(card, role)
         if action:
             if role == "resident":
-                already_reported = viewer_id in author_ids.get(card["id"], set())
+                already_reported = viewer_id in author_ids.get(card["id"], set()) or bool(confirmed_ids.intersection(card.get("related_issue_ids") or [card["id"]]))
                 if action["id"] == "confirm" and already_reported:
                     continue
                 if action["id"] in {"verify", "open"} and not already_reported:

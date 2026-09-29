@@ -228,6 +228,15 @@ def test_issue_keyboard_does_not_ask_reporter_to_confirm_again():
     assert any(button.get("payload") == "confirm_issue:issue-1" for row in neighbor for button in row)
 
 
+def test_confirmed_issue_is_remembered_across_bot_restart(tmp_path):
+    path = tmp_path / "bot-state.json"
+    state = PollState(str(path), "demo-house-a")
+    state.mark_confirmed("issue-1", "resident-1")
+    restored = PollState(str(path), "demo-house-a")
+    assert restored.has_confirmed("issue-1", "resident-1")
+    assert not restored.has_confirmed("issue-1", "resident-2")
+
+
 def test_issue_keyboard_shows_only_uk_action():
     buttons = issue_keyboard({"id": "issue-1", "state": "SUBMITTED"}, "", "dompuls_bot", "uk")[0]["payload"]["buttons"]
     payloads = {button["payload"] for row in buttons for button in row if button.get("type") == "callback"}

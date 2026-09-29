@@ -8,6 +8,7 @@ type Props = {
   issue: Issue
   managementOrg?: string
   viewerId?: string
+  alreadyReported?: boolean
   role: ViewerRole
   busy: boolean
   readOnly?: boolean
@@ -36,12 +37,12 @@ function signalSourceLabel(sourceType: string): string {
   return ['max_message', 'max_webapp', 'bot_dialog'].includes(sourceType) ? 'MAX' : 'Приложение'
 }
 
-function nextAction(issue: Issue, role: ViewerRole, viewerId?: string): { action: string; label: string } | null {
+function nextAction(issue: Issue, role: ViewerRole, viewerId?: string, alreadyReported = false): { action: string; label: string } | null {
   const order = issue.work_orders?.at(-1)
   // Only an order that is still being worked on offers executor actions.
   const active = order && ['ASSIGNED', 'IN_PROGRESS', 'REWORK_REQUIRED'].includes(order.status) ? order : undefined
   if (role === 'resident' && ['NEEDS_CONFIRMATION', 'DETECTED'].includes(issue.state)) {
-    return issue.signals?.some((signal) => signal.author_id === viewerId) ? null : { action: 'confirm', label: 'У меня тоже' }
+    return alreadyReported || issue.signals?.some((signal) => signal.author_id === viewerId) ? null : { action: 'confirm', label: 'У меня тоже' }
   }
   if (role === 'representative' && ['NEEDS_CONFIRMATION', 'DETECTED'].includes(issue.state)) return { action: 'confirm', label: 'Подтвердить проблему' }
   if (role === 'representative' && issue.state === 'CONFIRMED') return { action: 'prepare', label: 'Подготовить действие' }
@@ -53,8 +54,8 @@ function nextAction(issue: Issue, role: ViewerRole, viewerId?: string): { action
   return null
 }
 
-export function IssuePanel({ issue, managementOrg, viewerId, role, busy, readOnly, onAction, onComment, onClose, onShare, onOpenRelated }: Props) {
-  const next = readOnly ? null : nextAction(issue, role, viewerId)
+export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, role, busy, readOnly, onAction, onComment, onClose, onShare, onOpenRelated }: Props) {
+  const next = readOnly ? null : nextAction(issue, role, viewerId, alreadyReported)
   const order = issue.work_orders?.at(-1)
   const freshEvidence = Boolean(order?.started_at && order.evidence.some((item) => new Date(item.created_at).getTime() >= new Date(order.started_at!).getTime()))
   const evidenceCount = issue.work_orders?.reduce((sum, wo) => sum + wo.evidence.length, 0) || 0
