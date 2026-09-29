@@ -53,9 +53,9 @@ def build_access_page() -> BytesIO:
     y = line("Бот MAX", "@t312_hakaton_max_bot", y, link="https://max.ru/t312_hakaton_max_bot")
     y = line("Мини-приложение", "apaww.github.io/dom.sreda.io", y, link="https://apaww.github.io/dom.sreda.io/")
     y = line("API / проверка", "104.252.77.141.nip.io/health", y, link="https://104.252.77.141.nip.io/health")
-    y = line("Архив исходников", "DomPuls-source-e871283.zip", y)
-    y = line("Версия исходников", "e871283", y)
-    y = line("Версия mini-app", "dc86116", y)
+    y = line("Архив исходников", "DomPuls-source-583d9a8.zip", y)
+    y = line("Версия исходников", "583d9a8", y)
+    y = line("Версия mini-app", "01ca519", y)
 
     page.setFont("ArialRUBold", 13)
     page.setFillColor(dark)
@@ -73,7 +73,7 @@ def build_access_page() -> BytesIO:
 
     page.setFillColor(muted)
     page.setFont("ArialRU", 9)
-    page.drawString(52, 85, "SHA-256 архива: 356069b086555eb6faa8276edae879d27acac4a57ea14c9f6e9d179df135d20d")
+    page.drawString(52, 85, "SHA-256 архива: 946681f7dbcad9b4568cfc356fa22047c06131ac135683cfa9dc5cba715f8726")
     page.drawString(52, 70, "Доступ: обычный аккаунт MAX. Логин и пароль для демо не требуются; рабочие токены в Git не публикуются.")
     page.drawString(52, 55, "Локально: cp .env.example .env; docker compose up --build. По умолчанию MAX симулируется.")
     page.drawString(52, 40, "Передача в УК модельная; официальный канал УК/ГИС ЖКХ не подключён.")

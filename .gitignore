@@ -14,6 +14,7 @@ node_modules/
 dist/
 submission/.build/
 .codex-finalizer/
+output/source/*.zip
 *.sqlite3
 uploads/*
 !uploads/.gitkeep
