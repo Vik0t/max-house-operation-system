@@ -933,6 +933,8 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible), select:focus:not(
   color: var(--text-tertiary);
   padding: var(--spacing-3xl) var(--spacing-2xl);
 }
+.public-entry { display: flex; align-items: center; justify-content: center; gap: var(--spacing-2xl); flex-wrap: wrap; }
+.public-entry-link { text-decoration: none; }
 
 /* ─── tabs ────────────────────────────────────────────────────── */
 .tabs {

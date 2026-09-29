@@ -326,7 +326,10 @@ export default function App() {
       {!state ? <button className="max-btn max-btn--secondary" disabled={overviewLoading} onClick={() => void loadOverview()}>{overviewLoading ? 'Пробуем снова…' : 'Повторить'}</button> : null}
       <button className="error-banner-close" aria-label="Закрыть" onClick={() => setError(null)}>×</button>
     </div> : null}
-    {!canSelectHouse ? <div className="disclosure" role="status">Просмотр без входа. Чтобы выбрать свой дом и отправить обращение, откройте приложение из MAX. Действия здесь не сохраняются локально.</div> : null}
+    {!canSelectHouse ? <div className="disclosure public-entry" role="status">
+      <span>Сейчас вы смотрите обзор дома. Войдите через MAX, чтобы выбрать свой дом, сообщить о проблеме и следить за результатом.</span>
+      <a className="max-btn max-btn--primary public-entry-link" href="https://max.ru/t312_hakaton_max_bot?startapp" target="_blank" rel="noopener noreferrer">Открыть ДомПульс в MAX</a>
+    </div> : null}
     {maxIdentity && !maxIdentity.selected_house_id ? <div className="disclosure" role="status">Вы вошли через MAX. Теперь выберите свой дом — после этого сможете отправить обращение и видеть его статус. <button className="max-btn max-btn--primary" onClick={openHousePicker}>Выбрать дом</button></div> : null}
     {maxIdentity ? <p className="disclosure">Вход подтверждён через MAX ID {maxIdentity.user_id}. Дом выбран вами самостоятельно; статус жителя пока не проверен.</p> : null}
 
