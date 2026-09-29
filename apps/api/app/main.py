@@ -1268,14 +1268,27 @@ def read_asset(asset_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/assets/{asset_id}/timeline")
-def asset_timeline(asset_id: str, db: Session = Depends(get_db)):
+def asset_timeline(asset_id: str, request: Request, db: Session = Depends(get_db)):
     asset = db.get(Asset, asset_id) or not_found("Asset", asset_id)
+    detailed = settings.auth_mode != "required"
+    if not detailed:
+        internal_key = request.headers.get("x-dompuls-internal-key", "")
+        detailed = bool(settings.internal_api_key and hmac.compare_digest(internal_key, settings.internal_api_key))
+        if not detailed and request.headers.get("x-max-init-data"):
+            authorize(request, db, house_id=asset.house_id)
+            detailed = True
     issues = db.scalars(select(Issue).where(Issue.asset_id == asset_id).order_by(Issue.first_seen_at.desc())).all()
     events = []
     for issue in issues:
         events.append({"type": "issue", **issue_dict(issue)})
         for order in issue.work_orders:
-            events.append({"type": "work_order", **work_order_dict(order)})
+            item = work_order_dict(order)
+            if not detailed:
+                item["evidence_count"] = len(item["evidence"])
+                item["evidence"] = []
+                item.pop("assignee_id", None)
+                item.pop("instructions", None)
+            events.append({"type": "work_order", **item})
     return {"asset": asset_dict(asset, operational_state(db, asset)), "events": events}
 
 

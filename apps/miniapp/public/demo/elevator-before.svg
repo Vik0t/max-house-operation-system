@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="Демонстрационная иллюстрация остановившегося лифта">
+  <defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#e6ecf0"/><stop offset="1" stop-color="#b9c5cd"/></linearGradient></defs>
+  <rect width="640" height="400" fill="#e8eef1"/>
+  <rect x="100" y="40" width="440" height="320" rx="18" fill="#253849"/>
+  <rect x="130" y="68" width="380" height="264" rx="8" fill="url(#g)"/>
+  <rect x="318" y="68" width="4" height="264" fill="#6d7f8c"/>
+  <rect x="450" y="154" width="35" height="70" rx="8" fill="#213849"/>
+  <circle cx="467" cy="187" r="8" fill="#e75d59"/>
+  <rect x="175" y="95" width="122" height="32" rx="6" fill="#263b4d"/>
+  <text x="236" y="118" fill="#ff736a" font-family="Arial,sans-serif" font-size="26" font-weight="700" text-anchor="middle">СТОП</text>
+  <rect x="0" y="348" width="640" height="52" fill="#243647"/>
+  <text x="20" y="379" fill="#fff" font-family="Arial,sans-serif" font-size="18">Лифт №2 · остановка</text>
+  <text x="620" y="379" fill="#c8d7df" font-family="Arial,sans-serif" font-size="14" text-anchor="end">ДЕМО-ИЛЛЮСТРАЦИЯ</text>
+</svg>

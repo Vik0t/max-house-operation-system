@@ -1333,6 +1333,11 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible), select:focus:not(
   font-size: var(--fs-tag);
   color: var(--text-tertiary);
 }
+.timeline-date { font-size: var(--fs-tag); color: var(--text-tertiary); }
+.timeline-link { align-self: flex-start; border: 0; background: none; padding: var(--spacing-xs) 0; color: var(--text-themed); cursor: pointer; font: inherit; font-size: var(--fs-description); }
+.timeline-link:hover { text-decoration: underline; }
+.timeline-material { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-m); margin: var(--spacing-m) 0 var(--spacing-xl); padding: var(--spacing-m); border-radius: var(--radius-paper); background: var(--background-secondary); color: var(--text-secondary); font-size: var(--fs-description); }
+.timeline-material img { width: 72px; height: 72px; border-radius: var(--radius-paper); object-fit: cover; flex: none; }
 
 /* ─── subtle skeleton ─────────────────────────────────────────── */
 .skeleton {

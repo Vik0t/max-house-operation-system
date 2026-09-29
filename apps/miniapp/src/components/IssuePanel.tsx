@@ -3,6 +3,7 @@ import type { Issue, ViewerRole } from '../types'
 import { issueTitle, pluralRu, provenanceLabel, roleName, severityLabel, severityTone } from '../labels'
 import { StatusBadge } from './StatusBadge'
 import { PhotoInput } from './PhotoInput'
+import { mediaSrc } from '../media'
 
 type Props = {
   issue: Issue
@@ -80,7 +81,7 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
         <p className="lead">{issue.description}</p>
 
         {issue.photos?.length ? <div className="issue-photos">
-          {issue.photos.map((source, index) => <img key={index} src={source} alt="" />)}
+          {issue.photos.map((source, index) => <img key={index} src={mediaSrc(source)} alt={source.startsWith('/demo/') ? 'Демонстрационная иллюстрация происшествия' : 'Фото к обращению'} />)}
         </div> : null}
 
         {issue.state === 'DECLINED' && issue.decline_reason ? <div className="drawer-insight">Причина отказа: {issue.decline_reason}</div> : null}
@@ -154,7 +155,10 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
               <StatusBadge value={order.status} />
             </div>
             <p style={{ fontSize: 'var(--fs-description)', color: 'var(--text-secondary)' }}>{order.title}</p>
-            {order.evidence.map((item) => <div className="drawer-evidence" key={item.id}>✓ {item.comment || item.type}</div>)}
+            {order.evidence.map((item) => <div className="drawer-evidence" key={item.id}>
+              ✓ {item.comment || item.type}
+              {item.uri ? <div className="issue-photos issue-photos--sm"><img src={mediaSrc(item.uri)} alt={item.uri.startsWith('/demo/') ? 'Демонстрационная иллюстрация результата работы' : 'Фото выполненной работы'} /></div> : null}
+            </div>)}
           </div>
         ) : null}
 
@@ -165,7 +169,7 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
               <span className="comment-meta">{roleName(comment.author_role)}{comment.created_at ? ` · ${formatDate(comment.created_at)}` : ''}</span>
               <span className="comment-text">{comment.text}</span>
               {comment.photos?.length ? <div className="issue-photos issue-photos--sm">
-                {comment.photos.map((source, index) => <img key={index} src={source} alt="" />)}
+                {comment.photos.map((source, index) => <img key={index} src={mediaSrc(source)} alt="Фото к заметке" />)}
               </div> : null}
             </div>)}
           </div> : <p className="comment-empty">Пока нет заметок. Добавьте уточнение или статус работ.</p>}

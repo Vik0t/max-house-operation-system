@@ -59,6 +59,21 @@ def test_required_auth_prevents_forged_role_and_wrong_house(client, monkeypatch)
     assert client.post(f"/issues/{issue_id}/accept", headers=headers, json={}).status_code == 403
 
 
+def test_public_asset_history_hides_work_photos_and_executor_identity(client, monkeypatch):
+    monkeypatch.setattr(settings, "auth_mode", "required")
+    monkeypatch.setattr(settings, "internal_api_key", "bot-internal-test")
+    public = client.get("/assets/house-a-elevator-2/timeline")
+    assert public.status_code == 200
+    public_works = [event for event in public.json()["events"] if event["type"] == "work_order"]
+    assert public_works and public_works[0]["evidence_count"] == 1
+    assert public_works[0]["evidence"] == []
+    assert "assignee_id" not in public_works[0]
+    private = client.get("/assets/house-a-elevator-2/timeline", headers={"X-Dompuls-Internal-Key": "bot-internal-test"})
+    assert private.status_code == 200
+    private_works = [event for event in private.json()["events"] if event["type"] == "work_order"]
+    assert private_works[0]["evidence"][0]["uri"] == "/demo/elevator-after.svg"
+
+
 def test_koltsovo_house_is_created_without_core_code_change(client):
     added = client.post("/houses", json={
         "id": "koltsovo-test-7", "address": "Никольский проспект, 7, р.п. Кольцово",

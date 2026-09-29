@@ -11,6 +11,7 @@ import { Tour, type TourStep } from './components/Tour'
 import { ChatBubble } from './components/ChatBubble'
 import { SignalList } from './components/SignalList'
 import { PhotoInput } from './components/PhotoInput'
+import { mediaSrc } from './media'
 import { HouseMap } from './components/HouseMap'
 import { KOLTSOVO_CENTER, koltsovoHouses } from './data/koltsovo'
 import { geocodeAddress as geocodeYandex, mapsConfigured, reverseGeocode } from './yandexMaps'
@@ -690,14 +691,26 @@ export default function App() {
         <button className="drawer-close" onClick={() => setTimeline(null)} aria-label="Закрыть">×</button>
         <p className="eyebrow">История объекта</p>
         <h2>{timeline.name}</h2>
+        <p className="lead">Что происходило с объектом и чем закончились работы</p>
         <div className="timeline">
-          {timeline.events.map((event, index) => <div className="timeline-item" key={`${String(event.id)}-${index}`}>
+          {timeline.events.map((event, index) => {
+            const isIssue = event.type === 'issue'
+            const dateValue = [event.completed_at, event.started_at, event.assigned_at, event.first_seen_at].find((value): value is string => typeof value === 'string' && Boolean(value))
+            const materials = Array.isArray(event.evidence) ? event.evidence as Array<Record<string, unknown>> : []
+            return <div className="timeline-item" key={`${String(event.id)}-${index}`}>
             <div className="timeline-dot" />
             <div className="timeline-content">
-              <strong>{event.type === 'issue' ? event.title as string : 'Выполненная работа'}</strong>
+              <strong>{String(event.title || (isIssue ? 'Обращение жителей' : 'Работа по объекту'))}</strong>
+              {dateValue ? <span className="timeline-date">{new Date(dateValue).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })}</span> : null}
               <small><StatusBadge value={String(event.state || event.status || 'UNKNOWN')} /></small>
+              {isIssue ? <button className="timeline-link" onClick={() => { setTimeline(null); openIssue(String(event.id)) }}>Открыть обращение</button> : null}
+              {!isIssue && typeof event.evidence_count === 'number' && event.evidence_count > 0 ? <span className="timeline-date">Подтверждений работы: {event.evidence_count}</span> : null}
+              {materials.map((material, materialIndex) => <div className="timeline-material" key={`${String(material.id)}-${materialIndex}`}>
+                <span>{String(material.comment || 'Подтверждение выполненной работы')}{material.provenance === 'SYNTHETIC' ? ' · демонстрационные данные' : ''}</span>
+                {typeof material.uri === 'string' && material.uri ? <img src={mediaSrc(material.uri)} alt={material.provenance === 'SYNTHETIC' ? 'Демонстрационная иллюстрация выполненной работы' : 'Фото выполненной работы'} /> : null}
+              </div>)}
             </div>
-          </div>)}
+          </div>})}
         </div>
       </aside>
     </div> : null}

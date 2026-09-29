@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="Демонстрационная иллюстрация работающего лифта">
+  <defs><linearGradient id="g" x2="0" y2="1"><stop stop-color="#f2f7f6"/><stop offset="1" stop-color="#b9d6cf"/></linearGradient></defs>
+  <rect width="640" height="400" fill="#e3f1ec"/>
+  <rect x="100" y="40" width="440" height="320" rx="18" fill="#25483f"/>
+  <rect x="130" y="68" width="380" height="264" rx="8" fill="url(#g)"/>
+  <rect x="318" y="68" width="4" height="264" fill="#6a8d80"/>
+  <rect x="450" y="154" width="35" height="70" rx="8" fill="#213e37"/>
+  <circle cx="467" cy="187" r="8" fill="#45c38b"/>
+  <rect x="175" y="95" width="122" height="32" rx="6" fill="#234239"/>
+  <text x="236" y="118" fill="#6ee4a8" font-family="Arial,sans-serif" font-size="26" font-weight="700" text-anchor="middle">2 ↑</text>
+  <circle cx="398" cy="215" r="45" fill="#2fad72"/>
+  <path d="m378 214 15 15 28-31" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="0" y="348" width="640" height="52" fill="#234239"/>
+  <text x="20" y="379" fill="#fff" font-family="Arial,sans-serif" font-size="18">Лифт №2 · контрольный запуск</text>
+  <text x="620" y="379" fill="#c8e8dc" font-family="Arial,sans-serif" font-size="14" text-anchor="end">ДЕМО-ИЛЛЮСТРАЦИЯ</text>
+</svg>

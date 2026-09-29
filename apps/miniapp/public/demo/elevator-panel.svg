@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="Демонстрационная иллюстрация панели лифта">
+  <rect width="640" height="400" fill="#dce6eb"/>
+  <rect x="195" y="35" width="250" height="305" rx="25" fill="#283f51"/>
+  <rect x="215" y="55" width="210" height="265" rx="14" fill="#bbcbd3"/>
+  <rect x="247" y="77" width="146" height="72" rx="8" fill="#263b4d"/>
+  <text x="320" y="125" fill="#ff665e" font-family="Arial,sans-serif" font-size="43" font-weight="700" text-anchor="middle">—</text>
+  <g fill="#ecf1f3" stroke="#6d8798" stroke-width="3"><circle cx="270" cy="196" r="25"/><circle cx="370" cy="196" r="25"/><circle cx="270" cy="266" r="25"/><circle cx="370" cy="266" r="25"/></g>
+  <g fill="#263d4e" font-family="Arial,sans-serif" font-size="23" text-anchor="middle"><text x="270" y="204">1</text><text x="370" y="204">2</text><text x="270" y="274">3</text><text x="370" y="274">4</text></g>
+  <rect x="0" y="348" width="640" height="52" fill="#243647"/>
+  <text x="20" y="379" fill="#fff" font-family="Arial,sans-serif" font-size="18">Панель лифта · нет движения</text>
+  <text x="620" y="379" fill="#c8d7df" font-family="Arial,sans-serif" font-size="14" text-anchor="end">ДЕМО-ИЛЛЮСТРАЦИЯ</text>
+</svg>
