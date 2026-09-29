@@ -190,6 +190,7 @@ def test_help_documents_house_switching():
     response = help_text("demo-house-a")
     assert "/дом_a" in response
     assert "/дом_b" in response
+    assert "/мой_id" in response
     assert "demo-house-a" not in response
 
 
@@ -427,6 +428,14 @@ def test_group_command_is_answered_privately_not_in_the_chat(tmp_path):
     state = PollState(str(tmp_path / "state.json"), "demo-house-a")
     sent = run_message(RecordingAdapter(), object(), state, "/start")
     assert sent[0]["user_id"] == "42"
+    assert "chat_id" not in sent[0]
+
+
+def test_max_user_id_command_is_answered_privately(tmp_path):
+    state = PollState(str(tmp_path / "state.json"), "demo-house-a")
+    sent = run_message(RecordingAdapter(), object(), state, "/мой_id")
+    assert sent[0]["user_id"] == "42"
+    assert "MAX ID: 42" in sent[0]["text"]
     assert "chat_id" not in sent[0]
 
 

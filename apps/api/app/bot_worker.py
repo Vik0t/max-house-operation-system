@@ -951,7 +951,7 @@ def help_text(house_id: str, role: str = "resident") -> str:
         "«на парковке нужен второй фонарь»\n\n"
         f"Текущий дом: {house_label(house_id)}\n"
         f"{role_text(role)}\n\n"
-        "Команды: /состояние, /меню, /назад, /отмена, /помощь\n"
+        "Команды: /состояние, /меню, /назад, /отмена, /помощь, /мой_id\n"
         "В демо дом можно сменить кнопкой «Сменить дом» или командами /дом_a и /дом_b. Смена действует на весь чат.\n"
         "Действия разделены по ролям: житель → домоуправляющий → УК → исполнитель."
     )
@@ -1142,6 +1142,15 @@ async def handle_message(
         await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения в этом чате относятся к этому дому. Смена действует для всех участников чата.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
         return
     house_id = state.house_for(message)
+    if command in {"/мой_id", "/my_id", "/id"}:
+        await send_reply(
+            adapter,
+            message,
+            f"Ваш MAX ID: {message.user_id}\n\nПередайте этот номер организатору показа, чтобы закрепить рабочую роль. Ссылку на диалог вместо ID использовать нельзя.",
+            menu_keyboard(current_role(state, message.conversation_key, message.user_id)),
+            private=True,
+        )
+        return
     if command in {"/start", "/help", "/menu", "/помощь", "/меню"}:
         role = current_role(state, message.conversation_key, message.user_id)
         if command == "/start" and get_settings().bot_role_mode == "showcase" and not state.has_role(message.conversation_key, message.user_id):
