@@ -74,6 +74,22 @@ def test_public_asset_history_hides_work_photos_and_executor_identity(client, mo
     assert private_works[0]["evidence"][0]["uri"] == "/demo/elevator-after.svg"
 
 
+def test_max_status_does_not_report_legacy_dialogs_as_groups(client, monkeypatch, tmp_path):
+    import app.main as main
+    from app.integrations.max_adapter import MockMaxAdapter
+
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps({"conversations": {
+        "chat:old-dialog": {"house_id": "demo-house-a", "last_seen_at": "old"},
+        "chat:real-group": {"house_id": "demo-house-b", "last_seen_at": "recent", "has_read_all_messages": True},
+    }}), encoding="utf-8")
+    monkeypatch.setattr(main.settings, "max_poll_state_path", str(state_file))
+    monkeypatch.setattr(main, "max_adapter", MockMaxAdapter())
+    response = client.get("/integrations/max/status")
+    assert response.status_code == 200
+    assert response.json()["groups"] == [{"house_id": "demo-house-b", "last_seen_at": "recent", "has_read_all_messages": True}]
+
+
 def test_koltsovo_house_is_created_without_core_code_change(client):
     added = client.post("/houses", json={
         "id": "koltsovo-test-7", "address": "Никольский проспект, 7, р.п. Кольцово",

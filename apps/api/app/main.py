@@ -255,7 +255,11 @@ async def max_status():
                     "last_seen_at": group.get("last_seen_at"),
                     "has_read_all_messages": group.get("has_read_all_messages"),
                 }
+                # Older bot versions accidentally persisted private MAX dialogs
+                # as chats. Only entries with an actual group permission check
+                # may be reported as registered house groups.
                 for group in (poll_state.get("conversations") or {}).values()
+                if group.get("has_read_all_messages") is not None
             ]
         except (OSError, ValueError, TypeError):
             pass
