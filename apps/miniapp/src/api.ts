@@ -10,16 +10,32 @@ async function remote<T>(path: string, options?: RequestInit): Promise<T> {
   const isRead = !options?.method || options.method.toUpperCase() === 'GET'
   const timeout = window.setTimeout(() => controller.abort(), isRead ? 45_000 : 120_000)
   try {
-    const response = await fetch(`${API_URL}${path}`, {
-      ...options,
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(getMaxLaunchContext().initData ? { 'X-Max-Init-Data': getMaxLaunchContext().initData } : {}), ...options?.headers },
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ detail: 'Сервис временно недоступен' }))
-      throw new Error(body.detail || `HTTP ${response.status}`)
+    for (let attempt = 0; attempt < (isRead ? 3 : 1); attempt++) {
+      let response: Response
+      try {
+        response = await fetch(`${API_URL}${path}`, {
+          ...options,
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json', ...(getMaxLaunchContext().initData ? { 'X-Max-Init-Data': getMaxLaunchContext().initData } : {}), ...options?.headers },
+        })
+      } catch (error) {
+        if (isRead && error instanceof TypeError && !controller.signal.aborted && attempt < 2) {
+          await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)))
+          continue
+        }
+        throw error
+      }
+      if (!response.ok) {
+        if (isRead && [502, 503, 504].includes(response.status) && attempt < 2) {
+          await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)))
+          continue
+        }
+        const body = await response.json().catch(() => ({ detail: 'Сервис временно недоступен' }))
+        throw new Error(body.detail || `HTTP ${response.status}`)
+      }
+      return await response.json() as T
     }
-    return await response.json() as T
+    throw new Error('Сервер временно недоступен. Попробуйте позже.')
   } catch (error) {
     if (controller.signal.aborted) throw new Error(isRead
       ? 'Сервер отвечает слишком долго. Нажмите «Повторить».'
