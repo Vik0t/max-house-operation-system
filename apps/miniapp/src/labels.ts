@@ -13,7 +13,10 @@ const categoryLabels: Record<string, string> = {
   elevator: 'Лифт',
   lighting: 'Освещение',
   water: 'Вода и отопление',
+  heating: 'Отопление',
   door: 'Дверь и домофон',
+  cleaning: 'Уборка',
+  parking: 'Парковка',
   other: 'Другое',
 }
 

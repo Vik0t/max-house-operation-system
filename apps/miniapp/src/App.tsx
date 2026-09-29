@@ -4,7 +4,7 @@ import { HouseOverview } from './components/HouseOverview'
 import { InitiativeCard } from './components/InitiativeCard'
 import { IssuePanel } from './components/IssuePanel'
 import { StatusBadge } from './components/StatusBadge'
-import { pluralRu, severityLabel, severityTone } from './labels'
+import { issueAssetLabel, pluralRu, severityLabel, severityTone } from './labels'
 import { resetLocalStore } from './localStore'
 import { mascot } from './mascot'
 import { Tour, type TourStep } from './components/Tour'
@@ -56,7 +56,7 @@ function TaskCard({ issue, onOpen }: { issue: Issue & { next_action?: { id: stri
   return <button className="task-card" onClick={onOpen}>
     <div className="task-card-top">
       <span className={`task-dot${isOk ? ' task-dot--ok' : ''}`} />
-      <span>{issue.zone_name || 'Дом'} · {issue.asset_name || issue.category}</span>
+      <span>{issue.zone_name || 'Дом'} · {issueAssetLabel(issue)}</span>
       <span className={`severity ${severityTone(issue.severity)} task-card-top-end`}>{severityLabel(issue.severity)}</span>
     </div>
     <div className="task-card-title">{issue.title}</div>
@@ -379,7 +379,7 @@ export default function App() {
           <div className="report-panel-header">
             <span className="section-header-label">Новое обращение</span>
             <h2>Что случилось?</h2>
-            <p>Опишите проблему своими словами. Если места не хватит, бот уточнит его в MAX.</p>
+            <p>Опишите проблему своими словами. Если место не определится, мы уточним его здесь.</p>
           </div>
           <textarea className="report-textarea" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Например: в подъезде не горит лампочка" rows={4} />
           <div className="chips">
@@ -682,7 +682,7 @@ export default function App() {
     <div className="bottom-spacer"></div>
 
     {/* ─── ISSUE PANEL (drawer) ────────────────────────────────────── */}
-    {issue ? <IssuePanel issue={issue} managementOrg={state?.house.management_org} role={role} busy={busy} readOnly={!canWrite} onAction={runIssueAction} onComment={(text, commentPhotos) => void perform(async () => { setIssue(await api.comment(issue.id, text, role, String(viewerId), commentPhotos)); await refresh() })} onClose={() => setIssue(null)} onShare={shareCurrentIssue} onOpenRelated={openIssue} /> : null}
+    {issue ? <IssuePanel issue={issue} managementOrg={state?.house.management_org} viewerId={String(viewerId)} role={role} busy={busy} readOnly={!canWrite} onAction={runIssueAction} onComment={(text, commentPhotos) => void perform(async () => { setIssue(await api.comment(issue.id, text, role, String(viewerId), commentPhotos)); await refresh() })} onClose={() => setIssue(null)} onShare={shareCurrentIssue} onOpenRelated={openIssue} /> : null}
 
     {/* ─── TIMELINE DRAWER ────────────────────────────────────────── */}
     {timeline ? <div className="drawer-backdrop" role="presentation" onMouseDown={() => setTimeline(null)}>

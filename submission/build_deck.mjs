@@ -1,12 +1,13 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Presentation, PresentationFile } from '@oai/artifact-tool'
 
 const workspaceDir = path.resolve(process.cwd())
 const skillDir = process.env.SKILL_DIR
 const pythonExecutable = process.env.RUNTIME_PYTHON
-if (!skillDir || !pythonExecutable) throw new Error('Set SKILL_DIR and RUNTIME_PYTHON')
+const nodeModules = process.env.RUNTIME_NODE_MODULES
+if (!skillDir || !pythonExecutable || !nodeModules) throw new Error('Set SKILL_DIR, RUNTIME_PYTHON and RUNTIME_NODE_MODULES')
+const { Presentation, PresentationFile } = await import(pathToFileURL(path.join(nodeModules, '@oai/artifact-tool/dist/artifact_tool.mjs')).href)
 const buildDir = path.join(workspaceDir, 'submission/.build')
 const finalPath = path.join(workspaceDir, 'submission/DomPuls_MAX_hackathon.pptx')
 await fs.mkdir(buildDir, { recursive: true })
@@ -106,7 +107,7 @@ function note(slide, value) { slide.speakerNotes.textFrame.setText(value) }
   const slide = base('Проверяемость и границы MVP', 7)
   text(slide, 76, 217, 520, 57, '2 дома', 44, C.blue, true)
   text(slide, 76, 283, 500, 91, 'Разная конфигурация объектов, маршрутов и порогов повторяемости', 25, C.ink)
-  text(slide, 655, 217, 510, 57, '101 тест', 44, C.blue, true)
+  text(slide, 655, 217, 510, 57, '100+ тестов', 44, C.blue, true)
   text(slide, 655, 283, 500, 91, 'В том числе 20 последовательных прогонов основного сценария', 25, C.ink)
   text(slide, 76, 446, 1080, 138, 'Передача в УК и государственные системы пока учебная. Данные демо-истории помечены как синтетические. Неформальный опрос не является ОСС.', 28, C.ink)
   note(slide, 'Проверка: README.md, configs/demo_house_a.yaml, configs/demo_house_b.yaml, tests/. Статус интеграций и ограничения перечислены в README.md и docs/evidence_registry.md.')
@@ -144,6 +145,6 @@ const result = await finalizePresentation({
   layoutArgs: ['--expected-slide-size-emu', '12192000,6858000', '--validate-heading-fit'],
   fontPolicy: { basis: 'design', families: ['Arial'] },
   verifyArtifactToolImport: true,
-  receiptPath: path.join(stagingDir, 'DomPuls_MAX_hackathon.validation-v2.json'),
+  receiptPath: path.join(stagingDir, 'DomPuls_MAX_hackathon.validation-v3.json'),
 })
 console.log(JSON.stringify({ finalPath, result }))

@@ -597,15 +597,22 @@ def house_state(
             if item.state not in ACTIVE_ISSUE_STATES and any(signal.author_id == viewer_id for signal in item.signals)
         )
         my_issue_cards.sort(key=lambda item: item.get("last_seen_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    author_ids = {card["id"]: set(card.get("related_signal_author_ids") or []) for card in issue_cards}
     for card in issue_cards:
         card.pop("related_signal_author_ids", None)
     # Compact cards carry work-order status so the queue does not offer a
     # second assignment after a work order has already been created.
-    task_pool = my_issue_cards if role == "resident" else issue_cards
+    task_pool = issue_cards if role == "resident" and viewer_id else ([] if role == "resident" else issue_cards)
     my_tasks = []
     for card in task_pool:
         action = role_task_action(card, role)
         if action:
+            if role == "resident":
+                already_reported = viewer_id in author_ids.get(card["id"], set())
+                if action["id"] == "confirm" and already_reported:
+                    continue
+                if action["id"] in {"verify", "open"} and not already_reported:
+                    continue
             my_tasks.append({**card, "next_action": action})
     threshold = get_house_config(house_id).recurrence.count
     issues_by_asset: dict[str, list[Issue]] = {}

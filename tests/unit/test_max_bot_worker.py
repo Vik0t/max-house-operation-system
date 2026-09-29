@@ -220,6 +220,14 @@ def test_issue_keyboard_hides_operator_actions_from_resident():
     assert "issue_submit:issue-1" not in payloads
 
 
+def test_issue_keyboard_does_not_ask_reporter_to_confirm_again():
+    issue = {"id": "issue-1", "state": "NEEDS_CONFIRMATION", "signals": [{"author_id": "resident-1"}]}
+    own = issue_keyboard(issue, "", "dompuls_bot", "resident", viewer_id="resident-1")[0]["payload"]["buttons"]
+    neighbor = issue_keyboard(issue, "", "dompuls_bot", "resident", viewer_id="resident-2")[0]["payload"]["buttons"]
+    assert not any(button.get("payload") == "confirm_issue:issue-1" for row in own for button in row)
+    assert any(button.get("payload") == "confirm_issue:issue-1" for row in neighbor for button in row)
+
+
 def test_issue_keyboard_shows_only_uk_action():
     buttons = issue_keyboard({"id": "issue-1", "state": "SUBMITTED"}, "", "dompuls_bot", "uk")[0]["payload"]["buttons"]
     payloads = {button["payload"] for row in buttons for button in row if button.get("type") == "callback"}

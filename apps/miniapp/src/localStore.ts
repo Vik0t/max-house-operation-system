@@ -490,7 +490,9 @@ export const localStore = {
     const my_issues = allIssues.filter((item) => ownedIds.has(item.id))
 
     let my_tasks: HouseState['my_tasks'] = []
-    if (role === 'resident') my_tasks = openIssues.map((i) => ({ ...i, next_action: { id: 'open', label: i.state === 'DONE_PENDING_VERIFICATION' ? 'Проверить результат' : 'Открыть' } }))
+    if (role === 'resident') my_tasks = openIssues
+      .filter((i) => (i.state === 'NEEDS_CONFIRMATION' && !ownedIds.has(i.id)) || (ownedIds.has(i.id) && ['DONE_PENDING_VERIFICATION', 'REOPENED'].includes(i.state)))
+      .map((i) => ({ ...i, next_action: i.state === 'NEEDS_CONFIRMATION' ? { id: 'confirm', label: 'У меня тоже' } : i.state === 'DONE_PENDING_VERIFICATION' ? { id: 'verify', label: 'Проверить результат' } : { id: 'open', label: 'Открыть' } }))
     else if (role === 'representative') my_tasks = openIssues.filter((i) => ['NEEDS_CONFIRMATION', 'CONFIRMED', 'ACTION_READY', 'REOPENED'].includes(i.state)).map((i) => ({ ...i, next_action: i.state === 'ACTION_READY' ? { id: 'submit', label: 'Передать в УК' } : i.state === 'REOPENED' ? { id: 'submit', label: 'Переотправить в УК' } : { id: 'confirm', label: 'Подтвердить' } }))
     else if (role === 'uk') my_tasks = openIssues.filter((i) => ['SUBMITTED', 'ACCEPTED', 'REOPENED'].includes(i.state)).map((i) => ({ ...i, next_action: i.state === 'SUBMITTED' ? { id: 'accept', label: 'Принять' } : { id: 'create-order', label: 'Назначить исполнителя' } }))
     else if (role === 'executor') my_tasks = openIssues.filter((i) => { const o = i.work_orders?.at(-1); return o ? ['ASSIGNED', 'IN_PROGRESS', 'REWORK_REQUIRED'].includes(o.status) : false }).map((i) => { const o = i.work_orders!.at(-1)!; const label = o.status === 'ASSIGNED' ? 'Начать работу' : o.status === 'REWORK_REQUIRED' ? 'Начать доработку' : o.evidence.length ? 'Завершить работу' : 'Добавить фото'; return { ...i, next_action: { id: 'open', label } } })

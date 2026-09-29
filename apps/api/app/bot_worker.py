@@ -685,13 +685,19 @@ def issue_keyboard(
     miniapp_url: str,
     bot_username: str,
     role: str = "legacy",
+    *,
+    viewer_id: str | None = None,
+    reported_now: bool = False,
 ) -> list[dict[str, Any]]:
     issue_id = str(issue["id"])
     rows: list[list[dict[str, Any]]] = []
     # ``legacy`` keeps the helper backwards-compatible for API consumers and
     # tests. The real MAX bot always passes a concrete role, so a resident can
     # never see operator buttons in a group chat.
-    if role in {"resident", "legacy"} and issue.get("state") == "NEEDS_CONFIRMATION":
+    already_reported = reported_now or bool(viewer_id and any(
+        str(signal.get("author_id")) == str(viewer_id) for signal in issue.get("signals") or []
+    ))
+    if role in {"resident", "legacy"} and issue.get("state") == "NEEDS_CONFIRMATION" and not already_reported:
         rows.append(
             [
                 {"type": "callback", "text": "У меня тоже", "payload": f"confirm_issue:{issue_id}"},
@@ -1240,7 +1246,11 @@ async def announce_result(
     attachments = None
     if issue := result.get("issue"):
         state.watch_issue(message, issue)
-        attachments = issue_keyboard(issue, miniapp_url, bot_username, role)
+        attachments = issue_keyboard(
+            issue, miniapp_url, bot_username, role,
+            viewer_id=message.user_id,
+            reported_now=str((result.get("signal") or {}).get("author_id")) == message.user_id,
+        )
     elif initiative := result.get("initiative"):
         if message.chat_id:
             # The poll belongs to the house conversation: every neighbour can
@@ -1504,7 +1514,7 @@ async def handle_callback(
         issue = result.get("issue")
         if issue:
             state.watch_issue(message, issue)
-        attachments = issue_keyboard(issue, miniapp_url, bot_username, role) if issue else menu_keyboard(role)
+        attachments = issue_keyboard(issue, miniapp_url, bot_username, role, viewer_id=callback.user_id, reported_now=True) if issue else menu_keyboard(role)
         # answer_callback can only edit the card where it already sits, which is
         # the private chat. The house chat still has to learn that the report is
         # now registered, after the clarification it was still waiting for.
@@ -1518,7 +1528,7 @@ async def handle_callback(
         issue = await api.issue(value)
         if state:
             state.watch_callback(callback, issue)
-        await adapter.answer_callback(callback.callback_id, notification="Карточка проблемы", message=callback_message(callback, format_result({"issue": issue}, miniapp_url), issue_keyboard(issue, miniapp_url, bot_username, role)))
+        await adapter.answer_callback(callback.callback_id, notification="Карточка проблемы", message=callback_message(callback, format_result({"issue": issue}, miniapp_url), issue_keyboard(issue, miniapp_url, bot_username, role, viewer_id=callback.user_id)))
         return
     if action == "route":
         await adapter.answer_callback(
@@ -1554,7 +1564,7 @@ async def handle_callback(
         await adapter.answer_callback(
             callback.callback_id,
             notification=notification,
-            message={"text": format_result({"issue": issue, "clustered": True}, miniapp_url), "format": "markdown", "attachments": issue_keyboard(issue, miniapp_url, bot_username, role)},
+            message={"text": format_result({"issue": issue, "clustered": True}, miniapp_url), "format": "markdown", "attachments": issue_keyboard(issue, miniapp_url, bot_username, role, viewer_id=callback.user_id, reported_now=True)},
         )
         return
     if action == "issue_confirm":

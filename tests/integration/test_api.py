@@ -36,6 +36,13 @@ def test_house_state_exposes_role_specific_task_queue(client):
     assert all(item["state"] in {"SUBMITTED", "ACCEPTED", "WORK_IN_PROGRESS"} for item in uk["my_tasks"])
 
 
+def test_resident_is_not_asked_to_confirm_own_report_again(client):
+    own = client.get("/houses/demo-house-a/state", params={"viewer_id": "resident-seed-1", "role": "resident"}).json()
+    neighbor = client.get("/houses/demo-house-a/state", params={"viewer_id": "new-neighbor", "role": "resident"}).json()
+    assert all(item["id"] != "demo-current-elevator-issue" for item in own["my_tasks"])
+    assert any(item["id"] == "demo-current-elevator-issue" and item["next_action"]["id"] == "confirm" for item in neighbor["my_tasks"])
+
+
 def test_uk_queue_does_not_offer_second_assignment(client):
     issue_id = "demo-current-elevator-issue"
     client.post(f"/issues/{issue_id}/confirm", json={})
