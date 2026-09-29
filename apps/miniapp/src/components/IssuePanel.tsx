@@ -58,7 +58,10 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
   const next = readOnly ? null : nextAction(issue, role, viewerId, alreadyReported)
   const order = issue.work_orders?.at(-1)
   const freshEvidence = Boolean(order?.started_at && order.evidence.some((item) => new Date(item.created_at).getTime() >= new Date(order.started_at!).getTime()))
-  const evidenceCount = issue.work_orders?.reduce((sum, wo) => sum + wo.evidence.length, 0) || 0
+  const hasDetailedMaterials = issue.signals !== undefined || issue.work_orders !== undefined
+  const evidenceCount = (issue.photos?.length || 0)
+    + (issue.work_orders?.reduce((sum, wo) => sum + wo.evidence.length, 0) || 0)
+    + (issue.comments?.reduce((sum, comment) => sum + (comment.photos?.length || 0), 0) || 0)
   const [note, setNote] = useState('')
   const [notePhotos, setNotePhotos] = useState<string[]>([])
   const [workPhotos, setWorkPhotos] = useState<string[]>([])
@@ -91,10 +94,10 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
             <strong>{issue.recurrence_count}</strong>
             <span>событий за период</span>
           </div>
-          <div className="drawer-fact">
+          {hasDetailedMaterials ? <div className="drawer-fact">
             <strong>{evidenceCount}</strong>
             <span>фото и материалы</span>
-          </div>
+          </div> : null}
         </div>
 
         {issue.recurrence_count >= 3 ? <div className="drawer-insight">↻ Повторяющаяся проблема: {issue.recurrence_count} {pluralRu(issue.recurrence_count, 'событие', 'события', 'событий')} за 90 дней</div> : null}
