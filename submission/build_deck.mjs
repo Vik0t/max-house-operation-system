@@ -9,7 +9,7 @@ const nodeModules = process.env.RUNTIME_NODE_MODULES
 if (!skillDir || !pythonExecutable || !nodeModules) throw new Error('Set SKILL_DIR, RUNTIME_PYTHON and RUNTIME_NODE_MODULES')
 const { Presentation, PresentationFile } = await import(pathToFileURL(path.join(nodeModules, '@oai/artifact-tool/dist/artifact_tool.mjs')).href)
 const buildDir = path.join(workspaceDir, 'submission/.build')
-const finalPath = path.join(workspaceDir, 'submission/DomPuls_MAX_hackathon.pptx')
+const finalPath = path.join(workspaceDir, 'submission/DomPuls_MAX_hackathon_v2.pptx')
 await fs.mkdir(buildDir, { recursive: true })
 const { finalizePresentation } = await import(pathToFileURL(path.join(skillDir, 'container_tools/artifact_tool_utils.mjs')).href)
 
@@ -46,12 +46,12 @@ function note(slide, value) { slide.speakerNotes.textFrame.setText(value) }
   note(slide, 'Основа: продуктовая спецификация MAX_DomPuls_Product_Technical_Spec_v3.md; README.md проекта.')
 }
 {
-  const slide = base('Проблема повторяется. История теряется', 2)
+  const slide = base('Повторная поломка без истории работ', 2)
   text(slide, 76, 228, 1090, 94, '«Лифт опять встал, второй подъезд»', 43, C.ink, true)
-  text(slide, 76, 358, 880, 122, 'Жителю важно знать, что случилось с лифтом раньше, кто сейчас отвечает за работу и подтвердили ли соседи результат.', 29, C.muted)
-  text(slide, 76, 541, 920, 65, 'Единица продукта — состояние лифта во времени.', 30, C.blue, true)
+  text(slide, 76, 358, 880, 122, 'Житель подъезда не видит, связаны ли обращения, кто отвечает за ремонт и устранили ли причину прошлой остановки.', 29, C.muted)
+  text(slide, 76, 541, 920, 65, 'Результат для жителя — проверенное состояние лифта.', 30, C.blue, true)
   await mascot(slide, 'max-01.png', 1000, 410, 205, 216)
-  note(slide, 'Проблема и пример взяты из продуктовой спецификации. Не является результатом рыночного исследования.')
+  note(slide, 'Приоритетный сегмент: житель подъезда с повторной неисправностью лифта. Гипотеза о боли опирается на кейс «Умный город», страницы 5 и 16, и продуктовую спецификацию; независимого пользовательского интервью пока нет.')
 }
 {
   const slide = base('Как работает замкнутый цикл', 3)
@@ -104,13 +104,14 @@ function note(slide, value) { slide.speakerNotes.textFrame.setText(value) }
   note(slide, 'Метрики: reports/category_eval.json и docs/ai_metrics.md. Внешний OpenRouter получает только текст, который пользователь вручную пишет помощнику, с согласия пользователя.')
 }
 {
-  const slide = base('Проверяемость и границы MVP', 7)
-  text(slide, 76, 217, 520, 57, '2 дома', 44, C.blue, true)
-  text(slide, 76, 283, 500, 91, 'Разная конфигурация объектов, маршрутов и порогов повторяемости', 25, C.ink)
-  text(slide, 655, 217, 510, 57, '100+ тестов', 44, C.blue, true)
-  text(slide, 655, 283, 500, 91, 'В том числе 20 последовательных прогонов основного сценария', 25, C.ink)
-  text(slide, 76, 446, 1080, 138, 'Передача в УК и государственные системы пока учебная. Данные демо-истории помечены как синтетические. Неформальный опрос не является ОСС.', 28, C.ink)
-  note(slide, 'Проверка: README.md, configs/demo_house_a.yaml, configs/demo_house_b.yaml, tests/. Статус интеграций и ограничения перечислены в README.md и docs/evidence_registry.md.')
+  const slide = base('Тиражирование: меняется дом, не сценарий', 7)
+  text(slide, 76, 213, 520, 57, 'Ядро', 42, C.blue, true)
+  text(slide, 76, 279, 510, 105, 'Сигнал, объект, работа и проверка. Один код уже обслуживает два дома.', 26, C.ink)
+  text(slide, 655, 213, 510, 57, 'Конфигурация', 42, C.blue, true)
+  text(slide, 655, 279, 520, 112, 'Адрес, зоны, оборудование, УК, подрядчики, маршруты и пороги повторений.', 26, C.ink)
+  text(slide, 76, 429, 1080, 124, 'Предлагаемый пилот: один дом в Кольцово, совет дома и УК, 30 дней. Измерим долю проблем с понятным статусом и подтверждённым результатом.', 27, C.ink)
+  text(slide, 76, 610, 1110, 43, 'Для внедрения нужны подтверждение проживания и официальный канал УК.', 21, C.muted)
+  note(slide, 'Тиражирование: configs/demo_house_a.yaml и configs/demo_house_b.yaml. Пилот — предложение, не договорённость. Метрики гипотетические до запуска. 108 тестов и 20 последовательных E2E проходят. Передача в УК модельная, демо-история синтетическая, опрос не является ОСС.')
 }
 {
   const slide = base('Демонстрация за четыре минуты', 8, true)
@@ -129,7 +130,7 @@ function note(slide, value) { slide.speakerNotes.textFrame.setText(value) }
 
 const stagingDir = path.join(workspaceDir, '.codex-finalizer')
 await fs.mkdir(stagingDir, { recursive: true })
-const candidatePath = path.join(stagingDir, 'candidate.pptx')
+const candidatePath = path.join(stagingDir, 'candidate-v2.pptx')
 await (await PresentationFile.exportPptx(pptx)).save(candidatePath)
 for (let i = 0; i < pptx.slides.items.length; i++) {
   const preview = await pptx.export({ slide: pptx.slides.items[i], format: 'png', scale: 1 })
@@ -145,6 +146,6 @@ const result = await finalizePresentation({
   layoutArgs: ['--expected-slide-size-emu', '12192000,6858000', '--validate-heading-fit'],
   fontPolicy: { basis: 'design', families: ['Arial'] },
   verifyArtifactToolImport: true,
-  receiptPath: path.join(stagingDir, 'DomPuls_MAX_hackathon.validation-v3.json'),
+  receiptPath: path.join(stagingDir, 'DomPuls_MAX_hackathon.validation-v4.json'),
 })
 console.log(JSON.stringify({ finalPath, result }))

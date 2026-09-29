@@ -179,4 +179,4 @@ Security notes: [docs/security.md](docs/security.md).
 - [Evidence registry](docs/evidence_registry.md)
 - [Security](docs/security.md)
 - [Production deployment](docs/deployment.md)
-- [Презентация для жюри (PDF)](submission/DomPuls_MAX_hackathon.pdf) · [редактируемый PPTX](submission/DomPuls_MAX_hackathon.pptx)
+- [Презентация для сдачи (PDF)](output/pdf/DomPuls_MAX_hackathon_submission.pdf) · [редактируемая продуктовая часть (PPTX)](submission/DomPuls_MAX_hackathon_v2.pptx). Первый лист PDF — служебный доступ для проверки; рабочие секреты в репозитории отсутствуют.
