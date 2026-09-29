@@ -955,7 +955,7 @@ def group_ack(result: dict[str, Any]) -> str | None:
         verb = "Принял, это уже было" if result.get("clustered") else "Записал"
         return f"✅ {verb}: {short_issue_title(issue)}. Подробности в личке."
     if result.get("initiative"):
-        return "✅ Инициатива создана. Опрос в личке."
+        return "✅ Инициатива создана. Опрос открыт в чате."
     fallback = result.get("fallback") or {}
     kind = fallback.get("type")
     if kind in {"ZONE_CLARIFICATION", "MANUAL_CLASSIFICATION"}:
@@ -1172,13 +1172,19 @@ async def handle_message(
     if dialog and dialog.get("mode") == "initiative_text":
         initiative = await api.create_initiative(house_id, "Инициатива жителей", message.text)
         state.clear_dialog(pending)
+        if message.chat_id:
+            await adapter.send_message(
+                text=format_initiative(initiative),
+                chat_id=message.chat_id,
+                attachments=initiative_keyboard(initiative, bot_username, "resident"),
+            )
+            return
         await send_reply(
             adapter,
             message,
             format_initiative(initiative),
             initiative_keyboard(initiative, bot_username, current_role(state, message.conversation_key, message.user_id)),
             private=True,
-            ack="✅ Инициатива создана. Опрос в личке." if message.chat_id else None,
         )
         return
     if dialog and dialog.get("mode") in {"report_zone", "report_category"}:
@@ -1221,8 +1227,9 @@ async def announce_result(
 ) -> None:
     """Turn a processed message into what the house chat and the author see.
 
-    The chat gets one line when the message was a house matter and nothing at all
-    otherwise; the author always gets the card, the buttons and any question.
+    An issue gets a short acknowledgement in the group and its detailed card
+    privately. An initiative is different: its informal poll is published in
+    the group so neighbours can vote on the same card.
     """
     if await open_clarification(adapter, state, message, result, pending):
         return
@@ -1235,6 +1242,16 @@ async def announce_result(
         state.watch_issue(message, issue)
         attachments = issue_keyboard(issue, miniapp_url, bot_username, role)
     elif initiative := result.get("initiative"):
+        if message.chat_id:
+            # The poll belongs to the house conversation: every neighbour can
+            # vote there with their own MAX ID and see the aggregate update.
+            # Never expose representative actions on a shared poll card.
+            await adapter.send_message(
+                text=format_initiative(initiative),
+                chat_id=message.chat_id,
+                attachments=initiative_keyboard(initiative, bot_username, "resident"),
+            )
+            return
         attachments = initiative_keyboard(initiative, bot_username, role)
     if (result.get("fallback") or {}).get("type") == "DUPLICATE_CONFIRMATION":
         state.remember_duplicate_chat(str((result.get("signal") or {}).get("id") or ""), message.chat_id)
@@ -1601,7 +1618,7 @@ async def handle_callback(
         await adapter.answer_callback(
             callback.callback_id,
             notification="Голос учтён",
-            message={"text": format_initiative(updated), "format": "markdown", "attachments": initiative_keyboard(updated, bot_username, role)},
+            message={"text": format_initiative(updated), "format": "markdown", "attachments": initiative_keyboard(updated, bot_username, "resident" if callback.chat_id else role)},
         )
         return
     if action in {"verify_yes", "verify_no"}:

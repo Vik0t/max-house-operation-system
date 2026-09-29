@@ -46,7 +46,7 @@ Show that передача помечена как демонстрационн�
 
 ### 3:00–3:35 — Community initiative
 
-Vote in «Второй фонарь на парковке», then `Зафиксировать результат`. Show `FORMAL HANDOFF REQUIRED` and the notice that the poll is not a legal ОСС.
+In the house group send «На парковке нужен второй фонарь». The bot publishes one informal poll card in that group. Vote from two different MAX accounts and show the count update in place. Then, as the representative, open the initiative in the bot or mini-app and press `Зафиксировать результат`. Show `FORMAL HANDOFF REQUIRED` and the notice that the poll is not a legal ОСС.
 
 ### 3:35–3:55 — Scale proof
 

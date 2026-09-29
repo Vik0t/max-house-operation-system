@@ -1,0 +1,77 @@
+version: 1
+name: ДомПульс — проверка API
+base_url: https://104.252.77.141.nip.io
+openapi: ./openapi.json
+auth:
+  public_reads: Без авторизации
+  writes: Подписанный MAX initData; внутренний бот использует серверный ключ
+  demo: Локально AUTH_MODE=demo, тестовые роли указаны в README.md
+checks:
+  - name: Доступность сервиса
+    method: GET
+    path: /health
+    role: public
+    expected_status: 200
+    response_format: JSON
+    expected_fields: [status]
+  - name: Дома
+    method: GET
+    path: /houses
+    role: public
+    expected_status: 200
+    response_format: JSON array
+  - name: Состояние дома A
+    method: GET
+    path: /houses/demo-house-a/state
+    role: public
+    expected_status: 200
+    response_format: JSON
+    expected_fields: [house, issues, initiatives]
+  - name: Состояние дома B
+    method: GET
+    path: /houses/demo-house-b/state
+    role: public
+    expected_status: 200
+    response_format: JSON
+    expected_fields: [house, issues, initiatives]
+  - name: Объекты дома A
+    method: GET
+    path: /houses/demo-house-a/assets
+    role: public
+    expected_status: 200
+    response_format: JSON array
+  - name: Текущие проблемы
+    method: GET
+    path: /issues?house_id=demo-house-a
+    role: public
+    expected_status: 200
+    response_format: JSON array
+  - name: MAX-интеграция
+    method: GET
+    path: /integrations/max/status
+    role: public
+    expected_status: 200
+    response_format: JSON
+    expected_fields: [mode, connected]
+write_scenarios:
+  - name: Сообщение жителя → сигнал
+    method: POST
+    path: /signals
+    role: resident
+    expected_status: 200
+    response_format: JSON
+    notes: Не запускайте на общем production доме без согласования; создаёт запись.
+  - name: Голосование по инициативе
+    method: POST
+    path: /initiatives/{initiative_id}/poll
+    parameters: [initiative_id]
+    role: resident
+    expected_status: 200
+    response_format: JSON
+  - name: Верификация выполненной работы
+    method: POST
+    path: /issues/{issue_id}/verify
+    parameters: [issue_id]
+    role: resident
+    expected_status: 200
+    response_format: JSON

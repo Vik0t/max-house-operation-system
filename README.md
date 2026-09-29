@@ -54,7 +54,7 @@ MAX_BOT_TOKEN=...
 MAX_CA_BUNDLE=/app/certs/russian-trusted-ca.pem
 ```
 
-Compose запустит отдельный `bot` worker. Он читает `GET /updates` через Long Polling, отправляет сообщения в существующий Signal/Issue pipeline и отвечает в MAX. `/start` открывает чатовый пульт и предлагает выбрать рабочую роль **только в режиме показа**. В `BOT_ROLE_MODE=assigned` роли берутся исключительно из `MAX_REPRESENTATIVE_IDS`, `MAX_UK_IDS`, `MAX_EXECUTOR_IDS`. Бот уточняет только то, чего действительно не понял; заявки и инициативы можно создать из чата. Житель подтверждает сигнал и результат, домоуправляющий решает вопрос передачи, УК принимает/назначает, исполнитель прикладывает реальное фото выполнения и завершает работу. Чат получает обновления статуса. `MAX_CA_BUNDLE` содержит цепочку доверия MAX; TLS verification не отключается. Подробности: [docs/max_setup.md](docs/max_setup.md).
+Compose запустит отдельный `bot` worker. Он читает `GET /updates` через Long Polling, отправляет сообщения в существующий Signal/Issue pipeline и отвечает в MAX. `/start` открывает чатовый пульт и предлагает выбрать рабочую роль **только в режиме показа**. В `BOT_ROLE_MODE=assigned` роли берутся исключительно из `MAX_REPRESENTATIVE_IDS`, `MAX_UK_IDS`, `MAX_EXECUTOR_IDS` (это именно `user_id` из событий MAX, не `chat_id` и не номер из ссылки на диалог). Бот уточняет только то, чего действительно не понял; заявки и инициативы можно создать из чата. Житель подтверждает сигнал и результат, домоуправляющий решает вопрос передачи, УК принимает/назначает, исполнитель прикладывает реальное фото выполнения и завершает работу. В групповом чате бот публикует общий опрос по инициативе с обновляемым итогом; частные действия ролей на этой карточке не показываются. Чат получает обновления статуса. `MAX_CA_BUNDLE` содержит цепочку доверия MAX; TLS verification не отключается. Подробности: [docs/max_setup.md](docs/max_setup.md).
 
 В production задайте `AUTH_MODE=required` и случайный `INTERNAL_API_KEY`: публичные изменения тогда требуют подписанный MAX `initData` с проверкой времени, а бот обращается к API по отдельному серверному ключу. Пользователь выбирает свой дом в приложении, выбор сохраняется по MAX ID и доступен боту. Это **самообъявление дома**, не подтверждение прописки. В режиме показа роли в боте переключаются для жюри; перед реальным использованием назначьте MAX ID и включите `BOT_ROLE_MODE=assigned`. Публичный сайт вне MAX доступен для просмотра, но запись требует входа через MAX.
 
@@ -120,7 +120,7 @@ Suite покрывает:
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон внутри deployment-образа API и MAX-бота: `96 passed`; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон внутри deployment-образа API и MAX-бота: `100 passed`; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 
@@ -132,7 +132,7 @@ Suite покрывает:
 - `tests` — unit, integration, E2E;
 - PostgreSQL хранит House State Graph обычными relation tables.
 
-Детали: [docs/architecture.md](docs/architecture.md), [docs/api.md](docs/api.md).
+Детали: [docs/architecture.md](docs/architecture.md), [docs/api.md](docs/api.md). Статическая схема для проверки: [openapi.json](openapi.json), сценарии проверок: [DATA-API.yaml](DATA-API.yaml).
 
 ## Real vs simulated
 

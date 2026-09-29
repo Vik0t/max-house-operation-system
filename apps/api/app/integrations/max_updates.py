@@ -42,12 +42,12 @@ def parse_incoming_callback(update: dict[str, Any]) -> IncomingMaxCallback | Non
     user_id = user.get("user_id")
     if callback_id is None or payload is None or user_id is None:
         return None
-    chat_id = recipient.get("chat_id") or update.get("chat_id")
+    chat_id = _group_chat_id(recipient, update)
     return IncomingMaxCallback(
         callback_id=str(callback_id),
         payload=str(payload),
         user_id=str(user_id),
-        chat_id=str(chat_id) if chat_id is not None else None,
+        chat_id=chat_id,
     )
 
 
@@ -65,18 +65,27 @@ def parse_incoming_message(update: dict[str, Any]) -> IncomingMaxMessage | None:
         text = "[Фото]"
     if not text or user_id is None:
         return None
-    chat_id = recipient.get("chat_id") or update.get("chat_id")
+    chat_id = _group_chat_id(recipient, update)
     message_id = body.get("mid") or message.get("id")
     if message_id is None:
         message_id = f"{update.get('timestamp', 'unknown')}:{user_id}"
     return IncomingMaxMessage(
         text=text,
         user_id=str(user_id),
-        chat_id=str(chat_id) if chat_id is not None else None,
+        chat_id=chat_id,
         external_id=str(message_id),
         attachments=attachments,
         sender_is_bot=bool(sender.get("is_bot")),
     )
+
+
+def _group_chat_id(recipient: dict[str, Any], update: dict[str, Any]) -> str | None:
+    """MAX includes chat_id in dialogs too; only group chats use chat context."""
+    chat_type = recipient.get("chat_type")
+    if chat_type in {"dialog", "channel"}:
+        return None
+    chat_id = recipient.get("chat_id") or update.get("chat_id")
+    return str(chat_id) if chat_id is not None else None
 
 
 def image_url(attachments: list[dict[str, Any]]) -> str | None:

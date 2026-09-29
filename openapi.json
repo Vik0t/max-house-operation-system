@@ -1,0 +1,2315 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ДомПульс API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assistant/status": {
+      "get": {
+        "summary": "Assistant Status",
+        "operationId": "assistant_status_assistant_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assistant/chat": {
+      "post": {
+        "summary": "Assistant Chat",
+        "operationId": "assistant_chat_assistant_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/max/status": {
+      "get": {
+        "summary": "Max Status",
+        "operationId": "max_status_integrations_max_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/max/chats/{chat_id}/permissions": {
+      "get": {
+        "summary": "Max Permissions",
+        "operationId": "max_permissions_integrations_max_chats__chat_id__permissions_get",
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/max/init-data/validate": {
+      "post": {
+        "summary": "Max Init Data",
+        "operationId": "max_init_data_integrations_max_init_data_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaxInitDataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity/max": {
+      "post": {
+        "summary": "Max Profile",
+        "operationId": "max_profile_identity_max_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaxInitDataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity/max/house": {
+      "post": {
+        "summary": "Select Max House",
+        "operationId": "select_max_house_identity_max_house_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaxHouseSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity/max/by-user/{user_id}": {
+      "get": {
+        "summary": "Bot Selected House",
+        "operationId": "bot_selected_house_identity_max_by_user__user_id__get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/identity/max/house/by-bot": {
+      "post": {
+        "summary": "Bot Select House",
+        "operationId": "bot_select_house_identity_max_house_by_bot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotHouseSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/houses": {
+      "get": {
+        "summary": "List Houses",
+        "operationId": "list_houses_houses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add Koltsovo House",
+        "operationId": "add_koltsovo_house_houses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HouseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/houses/{house_id}": {
+      "get": {
+        "summary": "Read House",
+        "operationId": "read_house_houses__house_id__get",
+        "parameters": [
+          {
+            "name": "house_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "House Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/houses/{house_id}/assets": {
+      "get": {
+        "summary": "List Assets",
+        "operationId": "list_assets_houses__house_id__assets_get",
+        "parameters": [
+          {
+            "name": "house_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "House Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/houses/{house_id}/state": {
+      "get": {
+        "summary": "House State",
+        "operationId": "house_state_houses__house_id__state_get",
+        "parameters": [
+          {
+            "name": "house_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "House Id"
+            }
+          },
+          {
+            "name": "viewer_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Viewer Id"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(resident|representative|uk|executor)$",
+              "default": "resident",
+              "title": "Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/signals": {
+      "post": {
+        "summary": "Create Signal",
+        "operationId": "create_signal_signals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/signals/{signal_id}": {
+      "get": {
+        "summary": "Read Signal",
+        "operationId": "read_signal_signals__signal_id__get",
+        "parameters": [
+          {
+            "name": "signal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Signal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/signals/{signal_id}/resolve": {
+      "post": {
+        "summary": "Resolve Signal",
+        "description": "Finish a signal after the AI fallback asked the user for context.\n\nThe original signal is reused instead of creating a second synthetic signal.\nThis keeps provenance, idempotency and the chat history intact while still\nallowing the resident to choose the category/zone when confidence is low.",
+        "operationId": "resolve_signal_signals__signal_id__resolve_post",
+        "parameters": [
+          {
+            "name": "signal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Signal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualResolveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/signals/{signal_id}/resolve-duplicate": {
+      "post": {
+        "summary": "Resolve Duplicate",
+        "operationId": "resolve_duplicate_signals__signal_id__resolve_duplicate_post",
+        "parameters": [
+          {
+            "name": "signal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Signal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateResolutionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues": {
+      "get": {
+        "summary": "List Issues",
+        "operationId": "list_issues_issues_get",
+        "parameters": [
+          {
+            "name": "house_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "House Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}": {
+      "get": {
+        "summary": "Read Issue",
+        "operationId": "read_issue_issues__issue_id__get",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/comments": {
+      "post": {
+        "summary": "Comment On Issue",
+        "operationId": "comment_on_issue_issues__issue_id__comments_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueCommentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/confirm": {
+      "post": {
+        "summary": "Confirm Issue",
+        "operationId": "confirm_issue_issues__issue_id__confirm_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/route": {
+      "post": {
+        "summary": "Select Issue Route",
+        "operationId": "select_issue_route_issues__issue_id__route_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteSelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/prepare": {
+      "post": {
+        "summary": "Prepare Issue Action",
+        "description": "Recover a confirmed issue whose action was not prepared yet.",
+        "operationId": "prepare_issue_action_issues__issue_id__prepare_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/resident-confirm": {
+      "post": {
+        "summary": "Resident Confirm Issue",
+        "operationId": "resident_confirm_issue_issues__issue_id__resident_confirm_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResidentConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/submit": {
+      "post": {
+        "summary": "Submit Issue",
+        "operationId": "submit_issue_issues__issue_id__submit_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/accept": {
+      "post": {
+        "summary": "Accept Issue",
+        "operationId": "accept_issue_issues__issue_id__accept_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_id}/verify": {
+      "post": {
+        "summary": "Verify Issue",
+        "operationId": "verify_issue_issues__issue_id__verify_post",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assets/{asset_id}": {
+      "get": {
+        "summary": "Read Asset",
+        "operationId": "read_asset_assets__asset_id__get",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assets/{asset_id}/timeline": {
+      "get": {
+        "summary": "Asset Timeline",
+        "operationId": "asset_timeline_assets__asset_id__timeline_get",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/work-orders": {
+      "post": {
+        "summary": "Create Work Order",
+        "operationId": "create_work_order_work_orders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkOrderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/work-orders/{order_id}": {
+      "patch": {
+        "summary": "Patch Work Order",
+        "operationId": "patch_work_order_work_orders__order_id__patch",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkOrderPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/work-orders/{order_id}/evidence": {
+      "post": {
+        "summary": "Add Evidence",
+        "operationId": "add_evidence_work_orders__order_id__evidence_post",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/initiatives": {
+      "post": {
+        "summary": "Create Initiative",
+        "operationId": "create_initiative_initiatives_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitiativeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/initiatives/{initiative_id}": {
+      "get": {
+        "summary": "Read Initiative",
+        "operationId": "read_initiative_initiatives__initiative_id__get",
+        "parameters": [
+          {
+            "name": "initiative_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Initiative Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/initiatives/{initiative_id}/poll": {
+      "post": {
+        "summary": "Vote",
+        "operationId": "vote_initiatives__initiative_id__poll_post",
+        "parameters": [
+          {
+            "name": "initiative_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Initiative Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PollRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/initiatives/{initiative_id}/handoff": {
+      "post": {
+        "summary": "Handoff",
+        "operationId": "handoff_initiatives__initiative_id__handoff_post",
+        "parameters": [
+          {
+            "name": "initiative_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Initiative Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit/{entity_type}/{entity_id}": {
+      "get": {
+        "summary": "Read Audit",
+        "operationId": "read_audit_audit__entity_type___entity_id__get",
+        "parameters": [
+          {
+            "name": "entity_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Type"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/integrations/max/webhook": {
+      "post": {
+        "summary": "Max Webhook",
+        "operationId": "max_webhook_integrations_max_webhook_post",
+        "parameters": [
+          {
+            "name": "x-max-bot-api-secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Max-Bot-Api-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AcceptRequest": {
+        "properties": {
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id",
+            "default": "uk-demo"
+          }
+        },
+        "type": "object",
+        "title": "AcceptRequest"
+      },
+      "AssistantChatRequest": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/AssistantMessage"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Messages"
+          },
+          "house_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "House Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "title": "AssistantChatRequest"
+      },
+      "AssistantMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "AssistantMessage"
+      },
+      "BotHouseSelectionRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Id"
+          },
+          "house_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "House Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "house_id"
+        ],
+        "title": "BotHouseSelectionRequest"
+      },
+      "ConfirmRequest": {
+        "properties": {
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id",
+            "default": "resident-demo"
+          }
+        },
+        "type": "object",
+        "title": "ConfirmRequest"
+      },
+      "DuplicateResolutionRequest": {
+        "properties": {
+          "candidate_issue_id": {
+            "type": "string",
+            "title": "Candidate Issue Id"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "LINK",
+              "CREATE_NEW"
+            ],
+            "title": "Decision"
+          },
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id",
+            "default": "resident-demo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_issue_id",
+          "decision"
+        ],
+        "title": "DuplicateResolutionRequest"
+      },
+      "EvidenceCreate": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "before_photo",
+              "after_photo",
+              "document",
+              "comment",
+              "measurement"
+            ],
+            "title": "Type"
+          },
+          "author_id": {
+            "type": "string",
+            "title": "Author Id",
+            "default": "executor-demo"
+          },
+          "uri": {
+            "type": "string",
+            "maxLength": 700000,
+            "minLength": 1,
+            "title": "Uri"
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Comment",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "uri"
+        ],
+        "title": "EvidenceCreate"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HandoffRequest": {
+        "properties": {
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id",
+            "default": "representative-demo"
+          },
+          "handoff_type": {
+            "type": "string",
+            "title": "Handoff Type",
+            "default": "OSS_PREPARATION"
+          }
+        },
+        "type": "object",
+        "title": "HandoffRequest"
+      },
+      "HouseCreate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^koltsovo-[a-zA-Z0-9-]{1,40}$",
+            "title": "Id"
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 8,
+            "title": "Address"
+          },
+          "lat": {
+            "type": "number",
+            "maximum": 54.97,
+            "minimum": 54.92,
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 83.22,
+            "minimum": 83.17,
+            "title": "Lng"
+          },
+          "entrances": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Entrances",
+            "default": 1
+          },
+          "management_org": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Management Org",
+            "default": "Не подтверждена"
+          },
+          "condition": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Condition",
+            "default": "Нет данных"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "address",
+          "lat",
+          "lng"
+        ],
+        "title": "HouseCreate"
+      },
+      "InitiativeCreate": {
+        "properties": {
+          "house_id": {
+            "type": "string",
+            "title": "House Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 220,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Summary"
+          },
+          "zone_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Id"
+          },
+          "related_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Asset Id"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 2,
+            "title": "Options"
+          },
+          "requires_formal_process": {
+            "type": "boolean",
+            "title": "Requires Formal Process",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "house_id",
+          "title",
+          "summary",
+          "options"
+        ],
+        "title": "InitiativeCreate"
+      },
+      "IssueCommentCreate": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "author_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Author Id",
+            "default": "resident-demo"
+          },
+          "author_role": {
+            "type": "string",
+            "enum": [
+              "resident",
+              "representative",
+              "uk",
+              "executor"
+            ],
+            "title": "Author Role",
+            "default": "resident"
+          },
+          "photos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "IssueCommentCreate"
+      },
+      "ManualResolveRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "zone_id": {
+            "type": "string",
+            "title": "Zone Id"
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "zone_id"
+        ],
+        "title": "ManualResolveRequest"
+      },
+      "MaxHouseSelectionRequest": {
+        "properties": {
+          "init_data": {
+            "type": "string",
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Init Data"
+          },
+          "house_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "House Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "init_data",
+          "house_id"
+        ],
+        "title": "MaxHouseSelectionRequest"
+      },
+      "MaxInitDataRequest": {
+        "properties": {
+          "init_data": {
+            "type": "string",
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Init Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "init_data"
+        ],
+        "title": "MaxInitDataRequest"
+      },
+      "PollRequest": {
+        "properties": {
+          "voter_id": {
+            "type": "string",
+            "title": "Voter Id"
+          },
+          "option": {
+            "type": "string",
+            "title": "Option"
+          }
+        },
+        "type": "object",
+        "required": [
+          "voter_id",
+          "option"
+        ],
+        "title": "PollRequest"
+      },
+      "ResidentConfirmRequest": {
+        "properties": {
+          "actor_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Actor Id",
+            "default": "resident-demo"
+          }
+        },
+        "type": "object",
+        "title": "ResidentConfirmRequest"
+      },
+      "RouteSelectionRequest": {
+        "properties": {
+          "destination": {
+            "type": "string",
+            "enum": [
+              "management_org",
+              "representative"
+            ],
+            "title": "Destination"
+          },
+          "actor_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Actor Id",
+            "default": "representative-demo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "destination"
+        ],
+        "title": "RouteSelectionRequest"
+      },
+      "SignalCreate": {
+        "properties": {
+          "house_id": {
+            "type": "string",
+            "title": "House Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "author_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Author Id",
+            "default": "resident-demo"
+          },
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Id"
+          },
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "max_message",
+              "max_webapp",
+              "bot_dialog",
+              "manual",
+              "imported"
+            ],
+            "title": "Source Type",
+            "default": "manual"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "attachments": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Attachments"
+          },
+          "manual_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Category"
+          },
+          "manual_zone_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Zone Id"
+          },
+          "force_ai_failure": {
+            "type": "boolean",
+            "title": "Force Ai Failure",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "house_id",
+          "text"
+        ],
+        "title": "SignalCreate"
+      },
+      "SubmitRequest": {
+        "properties": {
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id",
+            "default": "representative-demo"
+          }
+        },
+        "type": "object",
+        "title": "SubmitRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerifyRequest": {
+        "properties": {
+          "verifier_type": {
+            "type": "string",
+            "enum": [
+              "resident",
+              "representative",
+              "uk",
+              "system"
+            ],
+            "title": "Verifier Type",
+            "default": "resident"
+          },
+          "verifier_id": {
+            "type": "string",
+            "title": "Verifier Id",
+            "default": "resident-demo"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "rejected",
+              "partially_confirmed"
+            ],
+            "title": "Result"
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Comment",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "title": "VerifyRequest"
+      },
+      "WorkOrderCreate": {
+        "properties": {
+          "issue_id": {
+            "type": "string",
+            "title": "Issue Id"
+          },
+          "assignee_id": {
+            "type": "string",
+            "title": "Assignee Id",
+            "default": "master-demo"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "instructions": {
+            "type": "string",
+            "title": "Instructions",
+            "default": ""
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high",
+              "urgent"
+            ],
+            "title": "Priority",
+            "default": "high"
+          }
+        },
+        "type": "object",
+        "required": [
+          "issue_id"
+        ],
+        "title": "WorkOrderCreate"
+      },
+      "WorkOrderPatch": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "DONE",
+              "ACCEPTED",
+              "REWORK_REQUIRED"
+            ],
+            "title": "Status"
+          },
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id",
+            "default": "executor-demo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "WorkOrderPatch"
+      }
+    }
+  }
+}

@@ -28,6 +28,15 @@ def test_parse_incoming_max_message():
     assert message.conversation_key == "chat:77"
 
 
+def test_max_dialog_chat_id_does_not_become_group_context():
+    update = sample_update()
+    update["message"]["recipient"] = {"chat_id": 499762541, "chat_type": "dialog", "user_id": 42}
+    message = parse_incoming_message(update)
+    assert message is not None
+    assert message.chat_id is None
+    assert message.conversation_key == "user:42"
+
+
 def test_parse_ignores_non_message_updates():
     assert parse_incoming_message({"update_type": "bot_started"}) is None
     update = sample_update("  ")
@@ -53,6 +62,15 @@ def test_parse_callback_update():
         }
     )
     assert callback == IncomingMaxCallback("cb-1", "confirm_issue:issue-1", "42", "77")
+
+
+def test_max_dialog_callback_uses_user_context():
+    callback = parse_incoming_callback({
+        "update_type": "message_callback",
+        "callback": {"callback_id": "cb-2", "payload": "menu", "user": {"user_id": 42}},
+        "message": {"recipient": {"chat_id": 499762541, "chat_type": "dialog", "user_id": 42}},
+    })
+    assert callback == IncomingMaxCallback("cb-2", "menu", "42", None)
 
 
 def test_poll_state_persists_marker_and_house(tmp_path):
@@ -594,6 +612,54 @@ def test_group_acknowledges_a_new_problem_in_one_line_and_sends_the_card_private
     assert "chat_id" not in sent[1]
     assert "Проблема зарегистрирована" in sent[1]["text"]
     assert sent[1]["attachments"]
+
+
+def test_group_initiative_publishes_a_shared_informal_poll(tmp_path):
+    class Api:
+        async def process_message(self, message, house_id, **kwargs):
+            return {"initiative": {
+                "id": "initiative-1", "title": "Второй фонарь на парковке",
+                "summary": "Жители предлагают осветить парковку.",
+                "state": "INFORMAL_POLL", "options": ["Поддерживаю", "Не поддерживаю"],
+                "votes": {},
+            }}
+
+    state = PollState(str(tmp_path / "state.json"), "demo-house-a")
+    sent = run_message(RecordingAdapter(), Api(), state, "на парковке нужен второй фонарь")
+    assert len(sent) == 1
+    assert sent[0]["chat_id"] == "77"
+    assert "user_id" not in sent[0]
+    assert "Опрос жителей" in sent[0]["text"]
+    buttons = sent[0]["attachments"][0]["payload"]["buttons"]
+    assert buttons[0][0]["payload"] == "vote:initiative-1:0"
+    assert buttons[1][0]["payload"] == "vote:initiative-1:1"
+    assert not any(button.get("payload", "").startswith("initiative_handoff:") for row in buttons for button in row)
+
+
+def test_group_vote_updates_shared_card_without_operator_button(tmp_path):
+    class Api:
+        async def initiative(self, initiative_id):
+            return {"id": initiative_id, "title": "Фонарь", "summary": "Осветить парковку",
+                    "state": "INFORMAL_POLL", "options": ["Да", "Нет"], "votes": {}}
+
+        async def vote(self, initiative_id, voter_id, option):
+            assert (initiative_id, voter_id, option) == ("initiative-1", "42", "Да")
+            return {"id": initiative_id, "title": "Фонарь", "summary": "Осветить парковку",
+                    "state": "INFORMAL_POLL", "options": ["Да", "Нет"], "votes": {"Да": 1}}
+
+    class Adapter(RecordingAdapter):
+        async def answer_callback(self, callback_id, notification=None, message=None):
+            self.answer = message
+            self.notification = notification
+
+    state = PollState(str(tmp_path / "state.json"), "demo-house-a")
+    state.set_role("chat:77", "42", "representative")
+    adapter = Adapter()
+    asyncio.run(handle_callback(adapter, Api(), IncomingMaxCallback("cb-1", "vote:initiative-1:0", "42", "77"), "https://example.test/app/", "dompuls_bot", state))
+    assert adapter.notification == "Голос учтён"
+    assert "Да — 1" in adapter.answer["text"]
+    buttons = adapter.answer["attachments"][0]["payload"]["buttons"]
+    assert not any(button.get("payload", "").startswith("initiative_handoff:") for row in buttons for button in row)
 
 
 def test_choosing_a_zone_in_private_tells_the_house_chat_the_report_is_registered(tmp_path):

@@ -27,6 +27,8 @@ docker compose --env-file .env.prod -f compose.yaml ps
 
 Для публичного запуска: `AUTH_MODE=required`, `INTERNAL_API_KEY` — случайный длинный ключ, `BOT_ROLE_MODE=showcase` только на время жюри. После получения MAX ID заполнить allowlists и выставить `BOT_ROLE_MODE=assigned`. `LLM_MODE=openrouter` и `LLM_API_KEY` включают только ручной чат помощника. Ключи никогда не должны попадать в `VITE_*`, Git или Pages.
 
+При первом запуске оставьте `SEED_DEMO_ON_STARTUP=true` (значение по умолчанию): это создаст демоданные на пустой БД. На уже заполненном малом VPS можно установить `SEED_DEMO_ON_STARTUP=false`, чтобы не запускать импорт демоданных при каждом рестарте; миграции всё равно выполняются. Для сброса демо используйте отдельную команду из README.
+
 Проверка:
 
 ```bash
