@@ -702,7 +702,7 @@ export default function App() {
             <div className="timeline-content">
               <strong>{String(event.title || (isIssue ? 'Обращение жителей' : 'Работа по объекту'))}</strong>
               {dateValue ? <span className="timeline-date">{new Date(dateValue).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })}</span> : null}
-              <small><StatusBadge value={String(event.state || event.status || 'UNKNOWN')} /></small>
+              <small><StatusBadge value={String(event.state || event.status || 'UNKNOWN')} kind={isIssue ? 'issue' : 'work_order'} /></small>
               {isIssue ? <button className="timeline-link" onClick={() => { setTimeline(null); openIssue(String(event.id)) }}>Открыть обращение</button> : null}
               {!isIssue && typeof event.evidence_count === 'number' && event.evidence_count > 0 ? <span className="timeline-date">Подтверждений работы: {event.evidence_count}</span> : null}
               {materials.map((material, materialIndex) => <div className="timeline-material" key={`${String(material.id)}-${materialIndex}`}>

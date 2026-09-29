@@ -35,6 +35,9 @@ function badgeClass(value: string): string {
   return 'status-badge status-badge--new'
 }
 
-export function StatusBadge({ value }: { value: string }) {
+export function StatusBadge({ value, kind = 'issue' }: { value: string; kind?: 'issue' | 'work_order' }) {
+  if (kind === 'work_order' && value === 'ACCEPTED') {
+    return <span className="status-badge status-badge--done">Результат работы принят</span>
+  }
   return <span className={badgeClass(value)}>{labels[value] || 'Состояние уточняется'}</span>
 }

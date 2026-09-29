@@ -152,7 +152,7 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
             <p className="eyebrow" style={{ marginBottom: 'var(--spacing-m)' }}>Работа</p>
             <div className="drawer-work-order">
               <span className="drawer-action-label">Назначенный исполнитель</span>
-              <StatusBadge value={order.status} />
+              <StatusBadge value={order.status} kind="work_order" />
             </div>
             <p style={{ fontSize: 'var(--fs-description)', color: 'var(--text-secondary)' }}>{order.title}</p>
             {order.evidence.map((item) => <div className="drawer-evidence" key={item.id}>
