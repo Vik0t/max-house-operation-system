@@ -164,6 +164,21 @@ export default function App() {
   async function geocodeAddress() {
     const address = houseDraft.address.trim()
     if (!address) { setMapNotice('Сначала введите адрес дома.'); return }
+    const words = (value: string): string[] => value.toLocaleLowerCase('ru-RU')
+      .replace(/\b(?:р\.?п\.?|г\.?)\b/g, ' ')
+      .replace(/новосибирская область|новосибирская обл\.?|кольцово/g, ' ')
+      .match(/[а-яёa-z]+|\d+[а-яёa-z]?/g) || []
+    const queryWords = words(address)
+    const known = queryWords.length >= 2 ? mapHouses.find((house) => {
+      const houseWords = words(house.address)
+      return queryWords.every((word) => houseWords.includes(word)) && house.lat != null && house.lng != null
+    }) : null
+    if (known) {
+      setHouseDraft((draft) => ({ ...draft, lat: known.lat ?? draft.lat, lng: known.lng ?? draft.lng, address: known.address }))
+      setMapPreview(known)
+      setMapNotice('Дом найден на карте. Проверьте его карточку ниже.')
+      return
+    }
     if (!mapsConfigured) { setMapNotice('Отметьте дом на карте: точку можно поставить вручную.'); return }
     setMapNotice(null)
     try {
@@ -428,7 +443,7 @@ export default function App() {
           <p>{mapPreview.condition || 'Характеристики дома не указаны'}</p>
           <p>Управляющая организация: {mapPreview.management_org || 'не подтверждена'}</p>
           <p className="disclosure">Данные справочника требуют проверки. {houses.some((item) => item.id === mapPreview.id) ? 'Дом подключён к ДомПульсу.' : 'Карточка дома будет создана при выборе.'}</p>
-          <button className="max-btn max-btn--primary" disabled={busy || !canSelectHouse} onClick={() => selectHouse(mapPreview)}>{houses.some((item) => item.id === mapPreview.id) ? 'Открыть этот дом' : 'Выбрать и подключить дом'}</button>
+          <button className="max-btn max-btn--primary" disabled={busy || (!canSelectHouse && !houses.some((item) => item.id === mapPreview.id))} onClick={() => selectHouse(mapPreview)}>{houses.some((item) => item.id === mapPreview.id) ? 'Открыть этот дом' : canSelectHouse ? 'Выбрать и подключить дом' : 'Подключить дом через MAX'}</button>
         </div> : null}
         <div className="house-form">
           <input className="house-input" value={houseDraft.address} onChange={(event) => setHouseDraft((draft) => ({ ...draft, address: event.target.value }))} placeholder="Адрес: Никольский проспект, 1" />
@@ -439,7 +454,7 @@ export default function App() {
             <input className="house-input" value={houseDraft.condition} onChange={(event) => setHouseDraft((draft) => ({ ...draft, condition: event.target.value }))} placeholder="Состояние дома" />
           </div>
           <div className="house-form-row">
-            {mapsConfigured ? <button className="max-btn max-btn--secondary" onClick={() => void geocodeAddress()}>Найти адрес</button> : null}
+            <button className="max-btn max-btn--secondary" onClick={() => void geocodeAddress()}>Найти адрес</button>
             <button className="max-btn max-btn--primary" disabled={busy || resolvingAddress || !canSelectHouse || !houseDraft.address.trim() || houseDraft.lat == null || houseDraft.lng == null} onClick={saveHouse}>Добавить дом</button>
           </div>
         </div>
