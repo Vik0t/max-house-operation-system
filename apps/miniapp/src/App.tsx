@@ -94,7 +94,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
   const [showDemo, setShowDemo] = useState(false)
-  const [activeTab, setActiveTab] = useState<NavTab>('tasks')
+  const [activeTab, setActiveTab] = useState<NavTab>(() => launchContext.initData || localDemo || remoteDemo ? 'tasks' : 'house')
   const [maxUserName, setMaxUserName] = useState<string | null>(launchContext.unsafe?.user?.first_name || null)
   const [showNotifs, setShowNotifs] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
@@ -108,7 +108,7 @@ export default function App() {
   useEffect(() => { const timer = window.setInterval(() => { void refresh().catch(() => undefined); if (issue?.id) void api.issue(issue.id).then(setIssue).catch(() => undefined) }, 7_000); return () => window.clearInterval(timer) }, [issue?.id, refresh])
   useEffect(() => { if (!launchContext.initData) return; Promise.all([api.validateMaxContext(launchContext.initData), api.identity(launchContext.initData)]).then(([context, identity]) => { setMaxUserName(context.user?.first_name || null); setMaxIdentity(identity); setRole(identity.role); if (identity.selected_house_id) setHouseId(identity.selected_house_id) }).catch(() => setError('Не удалось подтвердить запуск в MAX. Откройте приложение из сообщения бота ещё раз.')) }, [launchContext.initData])
   useEffect(() => { if (!launchContext.issueId) return; api.issue(launchContext.issueId).then(setIssue).catch(() => undefined) }, [launchContext.issueId])
-  useEffect(() => { try { if (!window.localStorage.getItem('dompuls-tour-v1')) setTourOpen(true) } catch { /* ignore */ } }, [])
+  useEffect(() => { if (!launchContext.initData && !localDemo && !remoteDemo) return; try { if (!window.localStorage.getItem('dompuls-tour-v1')) setTourOpen(true) } catch { /* ignore */ } }, [launchContext.initData, localDemo, remoteDemo])
 
   async function perform(task: () => Promise<void>) { setBusy(true); setError(null); try { await task() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось выполнить действие') } finally { setBusy(false) } }
   function submitSignal(forceAiFailure = false) { void perform(async () => { const result = await api.signal(houseId, message, undefined, forceAiFailure, photos); setFallback(result.fallback); setPendingSignalId(result.signal?.id || null); setFallbackCategory(result.classification?.category || result.issue?.category || result.fallback?.candidate?.category || 'other'); if (result.issue) setIssue(await api.issue(result.issue.id)); if (!result.fallback) { setMessage(''); setPhotos([]); setShowReport(false) } await refresh() }) }
