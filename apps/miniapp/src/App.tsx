@@ -704,6 +704,10 @@ export default function App() {
         <h2>{timeline.name}</h2>
         <p className="lead">Что происходило с объектом и чем закончились работы</p>
         <div className="timeline">
+          {timeline.events.length === 0 ? <div className="empty-state">
+            <div className="empty-state-title">История пока пуста</div>
+            <p>По этому объекту ещё не было обращений и работ. Новые события появятся здесь.</p>
+          </div> : null}
           {timeline.events.map((event, index) => {
             const isIssue = event.type === 'issue'
             const dateValue = [event.completed_at, event.started_at, event.assigned_at, event.first_seen_at].find((value): value is string => typeof value === 'string' && Boolean(value))

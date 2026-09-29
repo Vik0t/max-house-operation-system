@@ -6,3 +6,6 @@ node_modules
 .pytest_cache
 *.sqlite3
 dist
+output
+submission
+.codex-finalizer
