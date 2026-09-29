@@ -55,7 +55,6 @@ class TfidfBackend:
         return self.vec.transform(texts)
 
 class TurboBackend:
-    """sergeyzh/rubert-tiny-turbo — лёгкая русская sentence-transformer."""
     name = "turbo"
 
     def __init__(self, model_name: str = "sergeyzh/rubert-tiny-turbo"):
@@ -281,24 +280,6 @@ def main():
     pairs = build_pairs(df)
     print(f"Оценка на {len(pairs)} парах (истина = совпали зона и объект):")
 
-    # TF-IDF
-    print()
-    print("=" * 70)
-    print("TF-IDF + структура")
-    print("=" * 70)
-
-    backend_tfidf = TfidfBackend().fit(df["text"].tolist())
-
-    evaluate(pairs, DuplicateRanker(backend_tfidf, use_structure=False),
-             "TF-IDF, только косинус")
-    res_tfidf = evaluate(pairs, DuplicateRanker(backend_tfidf, use_structure=True),
-                         "TF-IDF + структурные признаки")
-
-    HIGH = res_tfidf["link_thr"]
-    LOW  = max(0.0, HIGH - LOW_GAP)
-    print(f"\nTF-IDF авто-пороги: HIGH={HIGH:.2f} (LINK), LOW={LOW:.2f} (ASK)")
-    demo(backend_tfidf, "TF-IDF", HIGH, LOW)
-
     # turbo
     if args.turbo:
         print()
@@ -317,6 +298,25 @@ def main():
         low_t  = max(0.0, high_t - LOW_GAP)
         print(f"\nturbo авто-пороги: HIGH={high_t:.2f} (LINK), LOW={low_t:.2f} (ASK)")
         demo(backend_turbo, "turbo", high_t, low_t)
+        return
+
+    # TF-IDF
+    print()
+    print("=" * 70)
+    print("TF-IDF + структура")
+    print("=" * 70)
+
+    backend_tfidf = TfidfBackend().fit(df["text"].tolist())
+
+    evaluate(pairs, DuplicateRanker(backend_tfidf, use_structure=False),
+             "TF-IDF, только косинус")
+    res_tfidf = evaluate(pairs, DuplicateRanker(backend_tfidf, use_structure=True),
+                         "TF-IDF + структурные признаки")
+
+    HIGH = res_tfidf["link_thr"]
+    LOW  = max(0.0, HIGH - LOW_GAP)
+    print(f"\nTF-IDF авто-пороги: HIGH={HIGH:.2f} (LINK), LOW={LOW:.2f} (ASK)")
+    demo(backend_tfidf, "TF-IDF", HIGH, LOW)
 
 if __name__ == "__main__":
     main()
