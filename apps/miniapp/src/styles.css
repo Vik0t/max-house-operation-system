@@ -535,6 +535,7 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible), select:focus:not(
 }
 .cell-simple:hover { background: hsla(0,0%,0%,.03); }
 .cell-simple:active { background: hsla(0,0%,0%,.06); }
+.cell-simple--static:hover, .cell-simple--static:active { background: transparent; }
 .cell-simple + .cell-simple {
   border-top: 0.5px solid var(--divider-primary);
 }

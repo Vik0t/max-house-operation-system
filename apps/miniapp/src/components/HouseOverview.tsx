@@ -56,11 +56,15 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
       <div className="cell-list">
         {zones.length === 0 ? <div className="empty-state" style={{ minHeight: 120 }}>
           <div className="empty-state-title">Нет данных об объектах</div>
-        </div> : zones.map(([zoneId, info]) => <button className="cell-simple" key={zoneId} disabled={!state.assets.some((asset) => asset.zone_id === zoneId) && !state.issues.some((issue) => issue.zone_id === zoneId)} onClick={() => {
-          const asset = state.assets.find((a) => a.zone_id === zoneId)
-          if (asset) onAsset(asset.id)
-          else { const issue = state.issues.find((item) => item.zone_id === zoneId); if (issue) onIssue(issue.id) }
-        }}>
+        </div> : zones.map(([zoneId, info]) => {
+          const asset = state.assets.find((item) => item.zone_id === zoneId)
+          const issue = state.issues.find((item) => item.zone_id === zoneId)
+          const clickable = Boolean(asset || issue)
+          const Cell = clickable ? 'button' : 'div'
+          return <Cell className={`cell-simple${clickable ? '' : ' cell-simple--static'}`} key={zoneId} onClick={clickable ? () => {
+            if (asset) onAsset(asset.id)
+            else if (issue) onIssue(issue.id)
+          } : undefined}>
           <div className={`cell-before ${info.hasActive ? 'cell-before--default' : 'cell-before--muted'}`}>
             {zoneIcon(zoneId)}
           </div>
@@ -70,9 +74,9 @@ export function HouseOverview({ state, onIssue, onAsset }: Props) {
           </div>
           <div className="cell-after">
             {info.hasActive ? <span className="counter counter--themed">{info.issueCount}</span> : <span className="counter" style={{ visibility: 'hidden' }}>0</span>}
-            <span className="cell-chevron">{chevron}</span>
+            {clickable ? <span className="cell-chevron">{chevron}</span> : null}
           </div>
-        </button>)}
+        </Cell>})}
       </div>
     </section>
 
