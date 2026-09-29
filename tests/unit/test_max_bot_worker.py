@@ -470,6 +470,8 @@ def test_private_reply_falls_back_to_chat_when_direct_message_fails(tmp_path):
     assert sent[0]["user_id"] == "42"
     assert sent[1]["chat_id"] == "77"
     assert "Не смог открыть личный чат" in sent[1]["text"]
+    assert "Личные кнопки не показываю" in sent[1]["text"]
+    assert "attachments" not in sent[1]
 
 
 def test_role_chosen_privately_stays_private(tmp_path):

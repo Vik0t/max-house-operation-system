@@ -991,7 +991,8 @@ async def send_reply(adapter: MaxAdapter, message: IncomingMaxMessage, text: str
     one-line summary posted in the house chat alongside it, so neighbours see that
     a report was taken in while the card, the buttons and the questions stay with
     the person who needs them. A resident who never opened the bot private chat
-    cannot be written to, so the reply falls back to the chat.
+    cannot be written to; the group only gets an invitation to open the bot,
+    never the private card or its buttons.
     """
     if message.chat_id and not private:
         await adapter.send_message(text=text, chat_id=message.chat_id, attachments=attachments)
@@ -1003,8 +1004,11 @@ async def send_reply(adapter: MaxAdapter, message: IncomingMaxMessage, text: str
     except MaxAdapterError:
         if not message.chat_id:
             raise
-        LOGGER.warning("Direct message to user %s failed; answering in chat %s instead", message.user_id, message.chat_id)
-        await adapter.send_message(text=f"{text}\n\n_Не смог открыть личный чат, поэтому показываю здесь._", chat_id=message.chat_id, attachments=attachments)
+        LOGGER.warning("Direct message to user %s failed; asking them to open the bot from chat %s", message.user_id, message.chat_id)
+        await adapter.send_message(
+            text="Не смог открыть личный чат. Напишите боту /start, затем проверьте обращение через /состояние. Личные кнопки не показываю всему дому.",
+            chat_id=message.chat_id,
+        )
 
 
 def callback_message(callback: IncomingMaxCallback, text: str, attachments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
