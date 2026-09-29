@@ -25,11 +25,16 @@ const labels: Record<string, string> = {
   FORMAL_HANDOFF_REQUIRED: 'Нужна официальная передача',
 }
 
+function badgeClass(value: string): string {
+  if (['CLOSED', 'HEALTHY', 'VERIFIED'].includes(value)) return 'status-badge status-badge--done'
+  if (['REOPENED', 'ACTIVE_ISSUE', 'RECURRING', 'REWORK_REQUIRED'].includes(value)) return 'status-badge status-badge--danger'
+  if (['IN_PROGRESS', 'WORK_IN_PROGRESS', 'ASSIGNED', 'DONE_PENDING_VERIFICATION'].includes(value)) return 'status-badge status-badge--progress'
+  if (['CONFIRMED'].includes(value)) return 'status-badge status-badge--confirmed'
+  if (['ACTION_READY', 'SUBMITTED'].includes(value)) return 'status-badge status-badge--submitted'
+  if (['DETECTED', 'NEEDS_CONFIRMATION', 'NEW'].includes(value)) return 'status-badge status-badge--new'
+  return 'status-badge status-badge--new'
+}
+
 export function StatusBadge({ value }: { value: string }) {
-  const tone = ['CLOSED', 'HEALTHY'].includes(value)
-    ? 'positive'
-    : ['REOPENED', 'ACTIVE_ISSUE', 'RECURRING'].includes(value)
-      ? 'danger'
-      : 'neutral'
-  return <span className={`status status--${tone}`}>{labels[value] || 'Состояние уточняется'}</span>
+  return <span className={badgeClass(value)}>{labels[value] || 'Состояние уточняется'}</span>
 }

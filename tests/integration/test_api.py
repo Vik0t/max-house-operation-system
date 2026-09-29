@@ -23,6 +23,18 @@ def test_house_state_exposes_role_specific_task_queue(client):
     assert all(item["state"] in {"SUBMITTED", "ACCEPTED", "WORK_IN_PROGRESS"} for item in uk["my_tasks"])
 
 
+def test_uk_queue_does_not_offer_second_assignment(client):
+    issue_id = "demo-current-elevator-issue"
+    client.post(f"/issues/{issue_id}/confirm", json={})
+    client.post(f"/issues/{issue_id}/submit", json={})
+    client.post(f"/issues/{issue_id}/accept", json={})
+    before = client.get("/houses/demo-house-a/state", params={"role": "uk"}).json()
+    assert next(item for item in before["my_tasks"] if item["id"] == issue_id)["next_action"]["id"] == "assign"
+    client.post("/work-orders", json={"issue_id": issue_id})
+    after = client.get("/houses/demo-house-a/state", params={"role": "uk"}).json()
+    assert next(item for item in after["my_tasks"] if item["id"] == issue_id)["next_action"]["id"] == "track"
+
+
 def test_signal_clusters_by_house_zone_asset(client):
     result = client.post("/signals", json={"house_id": "demo-house-a", "text": "лифт опять встал во втором подъезде", "author_id": "r6"})
     assert result.status_code == 201
@@ -35,6 +47,24 @@ def test_signal_clusters_by_house_zone_asset(client):
     assert other.status_code == 201
     assert other.json()["issue"]["house_id"] == "demo-house-b"
     assert other.json()["issue"]["id"] != body["issue"]["id"]
+
+
+def test_open_issue_still_clusters_after_more_than_a_week(client):
+    from datetime import datetime, timedelta, timezone
+
+    from app.db import SessionLocal
+    from app.models import Issue
+
+    with SessionLocal() as db:
+        issue = db.get(Issue, "demo-current-elevator-issue")
+        issue.last_seen_at = datetime.now(timezone.utc) - timedelta(days=12)
+        db.commit()
+    response = client.post("/signals", json={
+        "house_id": "demo-house-a", "text": "лифт опять встал, второй подъезд", "author_id": "late-resident",
+    })
+    assert response.status_code == 201
+    assert response.json()["clustered"] is True
+    assert response.json()["issue"]["id"] == "demo-current-elevator-issue"
 
 
 def test_split_group_messages_build_one_contextual_issue(client):

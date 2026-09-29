@@ -40,6 +40,18 @@ def test_negative_verification_reopens_and_requests_rework(client):
     order = next(item for item in issue["work_orders"] if item["id"] == order_id)
     assert order["status"] == "REWORK_REQUIRED"
 
+    restarted = client.patch(f"/work-orders/{order_id}", json={"status": "IN_PROGRESS"})
+    assert restarted.status_code == 200
+    assert client.get(f"/issues/{issue['id']}").json()["state"] == "WORK_IN_PROGRESS"
+    stale_done = client.patch(f"/work-orders/{order_id}", json={"status": "DONE"})
+    assert stale_done.status_code == 409
+    fresh = client.post(f"/work-orders/{order_id}/evidence", json={
+        "type": "after_photo", "uri": "/demo/elevator-after.svg", "comment": "Повторная проверка",
+    })
+    assert fresh.status_code == 201
+    assert client.patch(f"/work-orders/{order_id}", json={"status": "DONE"}).status_code == 200
+    assert client.post(f"/issues/{issue['id']}/verify", json={"result": "confirmed"}).json()["state"] == "CLOSED"
+
 
 def test_initiative_flow_to_formal_marker(client):
     initiative_id = "seed-parking-light-initiative"
@@ -56,4 +68,3 @@ def test_second_house_uses_its_own_config(client):
     confirmed = client.post(f"/issues/{issue_id}/confirm", json={}).json()
     assert confirmed["actions"][-1]["suggested_destination"] == "polar-lift-contractor"
     assert "подрядчик" in confirmed["actions"][-1]["rationale"].lower()
-

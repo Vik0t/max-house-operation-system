@@ -3,9 +3,13 @@ WORKDIR /app
 COPY apps/miniapp/package.json apps/miniapp/package-lock.json apps/miniapp/tsconfig.json apps/miniapp/tsconfig.app.json apps/miniapp/vite.config.ts ./
 RUN npm ci --no-audit --no-fund
 COPY apps/miniapp/index.html ./
+COPY apps/miniapp/source.html ./
 COPY apps/miniapp/src ./src
+COPY apps/miniapp/public ./public
 ARG VITE_API_URL=http://localhost:8000
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_ALLOW_REMOTE_DEMO=false
+ENV VITE_ALLOW_REMOTE_DEMO=$VITE_ALLOW_REMOTE_DEMO
 RUN npm run build
 
 FROM nginx:1.27-alpine

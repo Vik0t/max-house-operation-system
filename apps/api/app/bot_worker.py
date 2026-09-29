@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from .integrations.max_adapter import MaxAdapter, MaxAdapterError, build_max_adapter
-from .integrations.max_updates import IncomingMaxCallback, IncomingMaxMessage, parse_incoming_callback, parse_incoming_message
+from .integrations.max_updates import IncomingMaxCallback, IncomingMaxMessage, image_url, parse_incoming_callback, parse_incoming_message
 from .settings import Settings, get_settings
 
 
@@ -21,7 +21,7 @@ HOUSE_COMMANDS = {
 }
 HOUSE_LABELS = {
     "demo-house-a": "Дом А · Никольский, 12",
-    "demo-house-b": "Дом Б · Центральная, 7",
+    "demo-house-b": "Дом Б · Полярная, 7",
 }
 ROLE_LABELS = {
     "resident": "Житель",
@@ -308,14 +308,30 @@ class PollState:
 
 
 class DomPulsApi:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, internal_api_key: str | None = None):
         self.base_url = base_url.rstrip("/")
+        self.internal_api_key = internal_api_key
 
     async def request(self, method: str, path: str, **kwargs) -> Any:
+        if self.internal_api_key:
+            kwargs["headers"] = {**kwargs.get("headers", {}), "X-Dompuls-Internal-Key": self.internal_api_key}
         async with httpx.AsyncClient(base_url=self.base_url, timeout=12.0) as client:
             response = await client.request(method, path, **kwargs)
         response.raise_for_status()
         return response.json()
+
+    async def selected_house(self, user_id: str) -> str | None:
+        if not self.internal_api_key:
+            return None
+        profile = await self.request("GET", f"/identity/max/by-user/{user_id}")
+        return profile.get("selected_house_id")
+
+    async def select_house(self, user_id: str, house_id: str) -> None:
+        if self.internal_api_key:
+            await self.request("POST", "/identity/max/house/by-bot", json={"user_id": user_id, "house_id": house_id})
+
+    async def houses(self) -> list[dict[str, Any]]:
+        return await self.request("GET", "/houses")
 
     async def process_message(
         self,
@@ -388,6 +404,9 @@ class DomPulsApi:
     async def submit(self, issue_id: str) -> dict[str, Any]:
         return await self.request("POST", f"/issues/{issue_id}/submit", json={})
 
+    async def prepare(self, issue_id: str) -> dict[str, Any]:
+        return await self.request("POST", f"/issues/{issue_id}/prepare", json={})
+
     async def accept(self, issue_id: str) -> dict[str, Any]:
         return await self.request("POST", f"/issues/{issue_id}/accept", json={})
 
@@ -397,14 +416,15 @@ class DomPulsApi:
     async def update_work_order(self, order_id: str, status: str) -> dict[str, Any]:
         return await self.request("PATCH", f"/work-orders/{order_id}", json={"status": status})
 
-    async def add_evidence(self, order_id: str) -> dict[str, Any]:
+    async def add_evidence(self, order_id: str, uri: str, author_id: str, comment: str) -> dict[str, Any]:
         return await self.request(
             "POST",
             f"/work-orders/{order_id}/evidence",
             json={
                 "type": "after_photo",
-                "uri": "/demo/elevator-after.svg",
-                "comment": "Контрольный запуск выполнен, evidence добавлен через MAX.",
+                "uri": uri,
+                "author_id": author_id,
+                "comment": comment[:1000],
             },
         )
 
@@ -534,14 +554,12 @@ def fallback_keyboard(result: dict[str, Any], role: str) -> list[dict[str, Any]]
     return menu_keyboard(role)
 
 
-def house_keyboard() -> list[dict[str, Any]]:
-    return inline_keyboard(
-        [
-            [{"type": "callback", "text": "Дом А · Никольский, 12", "payload": "house:demo-house-a"}],
-            [{"type": "callback", "text": "Дом Б · Центральная, 7", "payload": "house:demo-house-b"}],
-            [menu_button()],
-        ]
-    )
+def house_keyboard(houses: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    rows = [
+        [{"type": "callback", "text": str(house.get("address") or house_label(str(house["id"])))[:120], "payload": f"house:{house['id']}"}]
+        for house in (houses or [{"id": key, "address": label} for key, label in HOUSE_LABELS.items()])[:12]
+    ]
+    return inline_keyboard(rows + [[menu_button()]])
 
 
 def role_keyboard() -> list[dict[str, Any]]:
@@ -681,6 +699,8 @@ def issue_keyboard(
         )
     if role in {"representative", "legacy"} and issue.get("state") == "NEEDS_CONFIRMATION":
         rows.append([{"type": "callback", "text": "Подтвердить проблему", "payload": f"issue_confirm:{issue_id}"}])
+    if role in {"representative", "legacy"} and issue.get("state") == "CONFIRMED":
+        rows.append([{"type": "callback", "text": "Подготовить действие", "payload": f"issue_prepare:{issue_id}"}])
     if role in {"representative", "legacy"} and issue.get("state") == "ACTION_READY":
         action = issue_action(issue)
         confidence = float((action or {}).get("confidence") or 1)
@@ -697,13 +717,15 @@ def issue_keyboard(
         rows.append([{"type": "callback", "text": "Назначить исполнителя", "payload": f"issue_assign:{issue_id}"}])
     if role in {"executor", "legacy"} and current_order and current_order.get("status") == "ASSIGNED":
         rows.append([{"type": "callback", "text": "Начать работу", "payload": f"order_start:{issue_id}"}])
+    if role in {"executor", "legacy"} and current_order and current_order.get("status") == "REWORK_REQUIRED":
+        rows.append([{"type": "callback", "text": "Начать доработку", "payload": f"order_start:{issue_id}"}])
     if role in {"executor", "legacy"} and current_order and current_order.get("status") == "IN_PROGRESS":
-        if current_order.get("evidence"):
+        started_at = current_order.get("started_at") or ""
+        fresh_evidence = any(str(item.get("created_at") or "") >= str(started_at) for item in current_order.get("evidence") or [])
+        if fresh_evidence:
             rows.append([{"type": "callback", "text": "Завершить работу", "payload": f"order_done:{issue_id}"}])
         else:
-            # The API has no photo upload from MAX yet; add_evidence records a
-            # demo evidence entry. The label must not promise a photo upload.
-            rows.append([{"type": "callback", "text": "Зафиксировать выполнение", "payload": f"order_evidence:{issue_id}"}])
+            rows.append([{"type": "callback", "text": "Приложить фото работы", "payload": f"order_evidence:{issue_id}"}])
     if role in {"resident", "legacy"} and issue.get("state") == "DONE_PENDING_VERIFICATION":
         rows.append(
             [
@@ -783,7 +805,7 @@ ROLE_ATTENTION_STATES = {
     "resident": {"NEEDS_CONFIRMATION", "DONE_PENDING_VERIFICATION", "REOPENED"},
     "representative": {"NEEDS_CONFIRMATION", "CONFIRMED", "ACTION_READY", "REOPENED"},
     "uk": {"SUBMITTED", "ACCEPTED", "WORK_IN_PROGRESS", "DONE_PENDING_VERIFICATION"},
-    "executor": {"ACCEPTED", "WORK_IN_PROGRESS"},
+    "executor": {"ACCEPTED", "WORK_IN_PROGRESS", "REOPENED"},
 }
 
 
@@ -998,6 +1020,9 @@ def clarification_text(question: str, original: str) -> str:
 
 
 def current_role(state: PollState | None, conversation_key: str, user_id: str) -> str:
+    settings = get_settings()
+    if settings.bot_role_mode == "assigned":
+        return settings.role_for_max_user(str(user_id))
     return state.role_for(conversation_key, user_id) if state else "resident"
 
 
@@ -1006,6 +1031,11 @@ def role_text(role: str) -> str:
 
 
 def role_denied_text(required: str) -> str:
+    if get_settings().bot_role_mode == "assigned":
+        return (
+            f"Это действие доступно роли «{ROLE_LABELS[required]}».\n\n"
+            "Доступ назначает организатор дома по MAX ID. Если роль неверна, обратитесь к нему."
+        )
     return (
         f"Это действие доступно роли «{ROLE_LABELS[required]}».\n\n"
         "В ДомПульсе житель сообщает и подтверждает, домоуправляющий принимает решение о передаче, "
@@ -1056,6 +1086,13 @@ async def handle_message(
     miniapp_url: str,
     bot_username: str,
 ) -> None:
+    if not message.chat_id and getattr(api, "internal_api_key", None):
+        try:
+            selected = await api.selected_house(message.user_id)
+            if selected:
+                state.set_house_key(message.conversation_key, selected)
+        except httpx.HTTPError:
+            LOGGER.warning("Could not load selected house for MAX user %s", message.user_id)
     if message.chat_id:
         known = state.conversations.get(message.conversation_key)
         permissions = None
@@ -1074,13 +1111,17 @@ async def handle_message(
     pending = dialog_key(message.chat_id, message.user_id)
     if command in HOUSE_COMMANDS:
         house_id = HOUSE_COMMANDS[command]
+        if get_settings().auth_mode == "required" and message.chat_id and current_role(state, message.conversation_key, message.user_id) != "representative":
+            await send_reply(adapter, message, "Дом общего чата может сменить только домоуправляющий. Свой дом выберите в приложении.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
+            return
         state.set_house(message, house_id)
+        await api.select_house(message.user_id, house_id)
         await send_reply(adapter, message, f"Дом переключён: {house_label(house_id)}\n\nТеперь сообщения в этом чате относятся к этому дому. Смена действует для всех участников чата.", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
         return
     house_id = state.house_for(message)
     if command in {"/start", "/help", "/menu", "/помощь", "/меню"}:
         role = current_role(state, message.conversation_key, message.user_id)
-        if command == "/start" and not state.has_role(message.conversation_key, message.user_id):
+        if command == "/start" and get_settings().bot_role_mode == "showcase" and not state.has_role(message.conversation_key, message.user_id):
             await send_reply(
                 adapter,
                 message,
@@ -1106,6 +1147,16 @@ async def handle_message(
         await send_reply(adapter, message, "Диалог отменён. Выберите действие:", menu_keyboard(current_role(state, message.conversation_key, message.user_id)), private=True)
         return
     dialog = state.dialog(pending)
+    if dialog and dialog.get("mode") == "work_evidence":
+        uri = image_url(message.attachments)
+        if not uri:
+            await send_reply(adapter, message, "Пришлите фото выполненной работы одним сообщением. Если MAX не передал ссылку на фото, откройте карточку в приложении и приложите его там.", cancel_keyboard(), private=True)
+            return
+        await api.add_evidence(str(dialog["order_id"]), uri, message.user_id, message.text if message.text != "[Фото]" else "Фото выполненной работы")
+        issue = await api.issue(str(dialog["issue_id"]))
+        state.clear_dialog(pending)
+        await send_reply(adapter, message, "Фото сохранено. Теперь можно завершить работу.", issue_keyboard(issue, miniapp_url, bot_username, current_role(state, message.conversation_key, message.user_id)), private=True)
+        return
     if dialog and dialog.get("mode") == "report_text":
         # First try the complete message. Clarification is only shown when the
         # structured pipeline really lacks context; a clear message such as
@@ -1274,7 +1325,8 @@ async def handle_callback(
             )
             return
         if value == "houses":
-            await adapter.answer_callback(callback.callback_id, notification="Выберите дом", message=callback_message(callback, "**Выберите дом для этого чата**", house_keyboard()))
+            houses = await api.houses()
+            await adapter.answer_callback(callback.callback_id, notification="Выберите дом", message=callback_message(callback, "**Выберите дом**\n\nВыбор сохранится и в приложении.", house_keyboard(houses)))
             return
         if value == "issues":
             house_id = state.house_for_key(conversation_key) if state else "demo-house-a"
@@ -1318,6 +1370,9 @@ async def handle_callback(
             await adapter.answer_callback(callback.callback_id, notification="Инициативы жителей", message=callback_message(callback, text, inline_keyboard(rows)))
             return
         if value == "role":
+            if get_settings().bot_role_mode == "assigned":
+                await adapter.answer_callback(callback.callback_id, notification="Роль назначена администратором", message=callback_message(callback, f"{role_text(role)}\n\nЕсли роль неверна, обратитесь к организатору дома.", menu_keyboard(role)))
+                return
             await adapter.answer_callback(
                 callback.callback_id,
                 notification="Выберите рабочую роль",
@@ -1333,6 +1388,9 @@ async def handle_callback(
             await adapter.answer_callback(callback.callback_id, notification="Диалог отменён", message=callback_message(callback, "Выберите следующее действие:", menu_keyboard(role)))
             return
     if action == "role":
+        if get_settings().bot_role_mode == "assigned":
+            await adapter.answer_callback(callback.callback_id, notification="Самостоятельная смена роли недоступна", message=callback_message(callback, f"{role_text(role)}\n\nДоступы назначает администратор дома.", menu_keyboard(role)))
+            return
         if state:
             state.set_role(conversation_key, callback.user_id, value)
         selected = value if value in ROLE_LABELS else "resident"
@@ -1365,6 +1423,7 @@ async def handle_callback(
     required_role = {
         "confirm_issue": "resident",
         "issue_confirm": "representative",
+        "issue_prepare": "representative",
         "issue_submit": "representative",
         "route": "representative",
         "route_select": "representative",
@@ -1385,8 +1444,16 @@ async def handle_callback(
         )
         return
     if action == "house":
+        known_houses = await api.houses()
+        if value not in {str(house["id"]) for house in known_houses}:
+            await adapter.answer_callback(callback.callback_id, notification="Дом не найден")
+            return
+        if get_settings().auth_mode == "required" and callback.chat_id and role != "representative":
+            await adapter.answer_callback(callback.callback_id, notification="Дом общего чата может сменить только домоуправляющий")
+            return
         if state:
             state.set_house_key(conversation_key, value)
+        await api.select_house(callback.user_id, value)
         await adapter.answer_callback(callback.callback_id, notification="Дом выбран", message=callback_message(callback, f"Дом переключён: {house_label(value)}\n\nТеперь сообщения в этом чате относятся к выбранному дому. Смена действует для всех участников чата.", menu_keyboard(role)))
         return
     if action == "category":
@@ -1397,11 +1464,7 @@ async def handle_callback(
         state.begin_dialog(pending, "report_zone", **dialog, category=value)
         house_id = state.house_for_key(conversation_key)
         status = await api.house_status(house_id)
-        zones: dict[str, dict[str, str]] = {}
-        for asset in status.get("assets", []):
-            zone_id = str(asset.get("zone_id") or "")
-            if zone_id:
-                zones.setdefault(zone_id, {"id": zone_id, "name": zone_id.replace("house-", "").replace("-", " ")})
+        zones = {item["id"]: {"id": item["id"], "name": item["name"]} for item in status.get("zones", [])}
         await adapter.answer_callback(callback.callback_id, notification="Теперь выберите место", message=callback_message(callback, "**Где это произошло?**", zone_keyboard(list(zones.values()))))
         return
     if action == "zone":
@@ -1483,9 +1546,20 @@ async def handle_callback(
             state.watch_callback(callback, issue)
         await adapter.answer_callback(callback.callback_id, notification="Проблема подтверждена", message=callback_message(callback, format_result({"issue": issue}, miniapp_url), issue_keyboard(issue, miniapp_url, bot_username, role)))
         return
-    if action in {"issue_submit", "issue_accept", "issue_assign", "order_start", "order_evidence", "order_done"}:
+    if action == "order_evidence":
+        issue = await api.issue(value)
+        order = (issue.get("work_orders") or [])[-1:]
+        if not order or order[0].get("status") != "IN_PROGRESS":
+            await adapter.answer_callback(callback.callback_id, notification="Работа ещё не начата")
+            return
+        state and state.begin_dialog(pending, "work_evidence", issue_id=value, order_id=order[0]["id"])
+        await adapter.answer_callback(callback.callback_id, notification="Пришлите фото", message=callback_message(callback, "**Подтверждение работы**\n\nПришлите фото выполненной работы следующим сообщением. После сохранения появится кнопка «Завершить работу». Можно отменить: `/cancel`", cancel_keyboard()))
+        return
+    if action in {"issue_prepare", "issue_submit", "issue_accept", "issue_assign", "order_start", "order_done"}:
         issue_id = value
-        if action == "issue_submit":
+        if action == "issue_prepare":
+            issue = await api.prepare(issue_id)
+        elif action == "issue_submit":
             issue = await api.submit(issue_id)
         elif action == "issue_accept":
             issue = await api.accept(issue_id)
@@ -1501,8 +1575,6 @@ async def handle_callback(
             order_id = order[0]["id"]
             if action == "order_start":
                 await api.update_work_order(order_id, "IN_PROGRESS")
-            elif action == "order_evidence":
-                await api.add_evidence(order_id)
             else:
                 await api.update_work_order(order_id, "DONE")
             issue = await api.issue(issue_id)
@@ -1614,7 +1686,7 @@ async def run() -> None:
     bot_username = str(bot.get("username") or "")
     LOGGER.info("Connected to MAX as @%s (%s)", bot_username or "unknown", bot.get("user_id", "unknown"))
     state = PollState(settings.max_poll_state_path, settings.max_default_house_id)
-    api = DomPulsApi(settings.dompuls_api_url)
+    api = DomPulsApi(settings.dompuls_api_url, settings.internal_api_key)
     failures = 0
     while True:
         try:

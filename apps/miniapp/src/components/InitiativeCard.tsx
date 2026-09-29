@@ -11,27 +11,38 @@ type Props = {
 export function InitiativeCard({ initiative, busy, onVote, onHandoff }: Props) {
   const total = Object.values(initiative.votes).reduce((sum, value) => sum + value, 0)
   return (
-    <section className="panel initiative">
-      <div className="section-heading">
-        <div><p className="eyebrow">Инициатива жителей</p><h2>{initiative.title}</h2></div>
+    <div className="initiative-card">
+      <div className="initiative-header">
+        <span className="initiative-title">{initiative.title}</span>
         <StatusBadge value={initiative.state} />
       </div>
-      <p>{initiative.summary}</p>
-      <p className="muted">Предварительный неофициальный опрос · {total} голосов</p>
-      <div className="poll-options">
+      <p className="initiative-desc">{initiative.summary}</p>
+      <p style={{ fontSize: 'var(--fs-tag)', color: 'var(--text-tertiary)', marginBottom: 'var(--spacing-xl)' }}>
+        Предварительный неофициальный опрос · {total} голосов
+      </p>
+      <div className="flex-col gap-m">
         {initiative.options.map((option) => {
           const votes = initiative.votes[option] || 0
           const width = total ? Math.round((votes / total) * 100) : 0
+          const isAgainst = option.toLowerCase().includes('против')
           return (
-            <button key={option} disabled={busy || initiative.state !== 'INFORMAL_POLL'} onClick={() => onVote(option)}>
-              <span><strong>{option}</strong><b>{votes}</b></span>
-              <i style={{ width: `${width}%` }} />
+            <button key={option} className={`poll-option${isAgainst ? ' poll-option--against' : ''}`} disabled={busy || initiative.state !== 'INFORMAL_POLL'} onClick={() => onVote(option)}>
+              <div className="poll-option-bar" style={{ width: `${width}%` }} />
+              <span className="poll-option-text">
+                {option}
+                <span className="poll-option-pct">{total ? `${Math.round((votes / total) * 100)}%` : '0%'}</span>
+              </span>
             </button>
           )
         })}
       </div>
-      {initiative.state === 'INFORMAL_POLL' ? <button className="secondary" disabled={busy} onClick={onHandoff}>Зафиксировать результат</button> : null}
-      {initiative.state === 'FORMAL_HANDOFF_REQUIRED' ? <div className="honesty"><b>НУЖНА ОФИЦИАЛЬНАЯ ПЕРЕДАЧА</b> Опрос не является юридически значимым ОСС.</div> : null}
-    </section>
+      {initiative.state === 'INFORMAL_POLL' ? <div className="btn-row" style={{ marginTop: 'var(--spacing-xl)' }}>
+        <button className="max-btn max-btn--secondary" disabled={busy} onClick={onHandoff}>Зафиксировать результат</button>
+      </div> : null}
+      {initiative.state === 'FORMAL_HANDOFF_REQUIRED' ? <div className="drawer-honesty" style={{ marginTop: 'var(--spacing-xl)' }}>
+        <b>НУЖНА ОФИЦИАЛЬНАЯ ПЕРЕДАЧА</b>
+        Опрос не является юридически значимым ОСС.
+      </div> : null}
+    </div>
   )
 }

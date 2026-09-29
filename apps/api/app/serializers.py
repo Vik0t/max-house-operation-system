@@ -13,6 +13,9 @@ def house_dict(house: House):
         "management_org": house.management_org,
         "configuration_id": house.configuration_id,
         "metadata": house.metadata_json,
+        "lat": house.metadata_json.get("lat"),
+        "lng": house.metadata_json.get("lng"),
+        "condition": house.metadata_json.get("condition"),
     }
 
 
@@ -128,12 +131,15 @@ def issue_dict(issue: Issue, *, detailed: bool = False):
         "provenance": issue.provenance,
     }
     if detailed:
+        photos = [str(attachment.get("uri")) for signal in issue.signals for attachment in signal.attachments if attachment.get("type") == "image" and attachment.get("uri")]
         data.update(
             signals=[signal_dict(item) for item in sorted(issue.signals, key=lambda signal: signal.created_at)],
             actions=[action_dict(item) for item in issue.actions],
             submissions=[submission_dict(item) for item in issue.submissions],
             work_orders=[work_order_dict(item) for item in issue.work_orders],
             verifications=[verification_dict(item) for item in issue.verifications],
+            photos=photos,
+            comments=[{"id": item.id, "issue_id": item.issue_id, "author_id": item.author_id, "author_role": item.author_role, "text": item.text, "photos": item.photos, "created_at": item.created_at} for item in sorted(issue.comments, key=lambda comment: comment.created_at)],
         )
     return data
 

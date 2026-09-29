@@ -60,6 +60,9 @@ def parse_incoming_message(update: dict[str, Any]) -> IncomingMaxMessage | None:
     recipient = message.get("recipient") or {}
     text = str(body.get("text") or "").strip()
     user_id = sender.get("user_id")
+    attachments = body.get("attachments") or []
+    if not text and image_url(attachments):
+        text = "[Фото]"
     if not text or user_id is None:
         return None
     chat_id = recipient.get("chat_id") or update.get("chat_id")
@@ -71,9 +74,27 @@ def parse_incoming_message(update: dict[str, Any]) -> IncomingMaxMessage | None:
         user_id=str(user_id),
         chat_id=str(chat_id) if chat_id is not None else None,
         external_id=str(message_id),
-        attachments=body.get("attachments") or [],
+        attachments=attachments,
         sender_is_bot=bool(sender.get("is_bot")),
     )
+
+
+def image_url(attachments: list[dict[str, Any]]) -> str | None:
+    """Select an actual HTTPS image URL from a received MAX attachment."""
+    for item in attachments:
+        if item.get("type") != "image":
+            continue
+        payload = item.get("payload") or {}
+        candidates = [payload.get("url"), item.get("url")]
+        photos = payload.get("photos") or {}
+        if isinstance(photos, dict):
+            for photo in photos.values():
+                if isinstance(photo, dict):
+                    candidates.append(photo.get("url"))
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate.startswith("https://") and len(candidate) <= 2000:
+                return candidate
+    return None
 
 
 def polling_is_active(state_path: str, poll_timeout: int, *, now: float | None = None) -> bool:

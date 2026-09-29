@@ -181,6 +181,13 @@ def reset_and_seed(*, reset: bool = False, if_empty: bool = False) -> None:
         count = session.scalar(select(func.count()).select_from(House)) or 0
         if count:
             if if_empty:
+                # Config metadata can gain non-destructive fields (for example
+                # map coordinates) after a deployment without resetting work.
+                for config in load_all_configs():
+                    house = session.get(House, config.house.id)
+                    if house:
+                        house.metadata_json = {**config.house.metadata, **(house.metadata_json or {})}
+                session.commit()
                 return
             raise RuntimeError("Database already contains houses; use --reset for deterministic demo reset")
         seed_configs(session)

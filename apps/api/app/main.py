@@ -1,11 +1,14 @@
 import hashlib
 import hmac
 import json
+import re
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import delete, func, select
@@ -35,7 +38,9 @@ from .models import (
     House,
     Initiative,
     Issue,
+    IssueComment,
     IssueSignal,
+    MaxProfile,
     PollVote,
     Signal,
     Submission,
@@ -46,13 +51,18 @@ from .models import (
 )
 from .schemas import (
     AcceptRequest,
+    AssistantChatRequest,
+    BotHouseSelectionRequest,
     ConfirmRequest,
     DuplicateResolutionRequest,
     EvidenceCreate,
     HandoffRequest,
+    HouseCreate,
+    IssueCommentCreate,
     InitiativeCreate,
     ManualResolveRequest,
     MaxInitDataRequest,
+    MaxHouseSelectionRequest,
     PollRequest,
     ResidentConfirmRequest,
     RouteSelectionRequest,
@@ -69,6 +79,7 @@ from .state_machine import InvalidTransition
 
 settings = get_settings()
 max_adapter = build_max_adapter(settings)
+assistant_calls: dict[str, list[float]] = {}
 
 
 @asynccontextmanager
@@ -109,10 +120,125 @@ def run_issue_transition(db: Session, issue: Issue, target: IssueState, actor: s
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+def max_identity(init_data: str) -> tuple[str, str]:
+    if not settings.max_bot_token:
+        raise HTTPException(status_code=503, detail="MAX is not configured")
+    try:
+        validated = validate_max_init_data(
+            init_data, settings.max_bot_token, max_age_seconds=settings.max_init_data_max_age_seconds
+        )
+        user_id = str(validated["user"]["id"])
+    except (MaxInitDataError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="Не удалось проверить вход через MAX") from exc
+    return user_id, settings.role_for_max_user(user_id)
+
+
+def require_internal_bot(request: Request) -> None:
+    supplied = request.headers.get("x-dompuls-internal-key", "")
+    if not settings.internal_api_key or not hmac.compare_digest(supplied, settings.internal_api_key):
+        raise HTTPException(status_code=401, detail="Требуется внутренний ключ бота")
+
+
+def authorize(
+    request: Request,
+    db: Session,
+    *,
+    house_id: str | None = None,
+    roles: tuple[str, ...] = ("resident", "representative", "uk", "executor"),
+    owner_id: str | None = None,
+) -> str | None:
+    """Authorize a public mutation; internal bot calls use a separate server key."""
+    if settings.auth_mode == "demo":
+        return None
+    internal_key = request.headers.get("x-dompuls-internal-key", "")
+    if settings.internal_api_key and hmac.compare_digest(internal_key, settings.internal_api_key):
+        return None
+    init_data = request.headers.get("x-max-init-data", "")
+    if not init_data:
+        raise HTTPException(status_code=401, detail="Откройте приложение из MAX, чтобы выполнить действие")
+    user_id, role = max_identity(init_data)
+    if role not in roles:
+        raise HTTPException(status_code=403, detail="Это действие недоступно вашей роли")
+    if owner_id and owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Можно изменить только своё обращение")
+    if house_id:
+        profile = db.get(MaxProfile, user_id)
+        if not profile or profile.selected_house_id != house_id:
+            raise HTTPException(status_code=403, detail="Сначала выберите этот дом в приложении")
+    return user_id
+
+
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.execute(select(1))
     return {"status": "ok", "max_mode": max_adapter.mode, "llm_mode": settings.llm_mode}
+
+
+def local_assistant_answer(text: str, db: Session, house_id: str | None) -> str:
+    lowered = text.lower()
+    if "статус" in lowered or "что с домом" in lowered:
+        if house_id and db.get(House, house_id):
+            active = db.scalar(select(func.count()).select_from(Issue).where(Issue.house_id == house_id, Issue.state.in_(ACTIVE_ISSUE_STATES))) or 0
+            return f"Сейчас открытых проблем по этому дому: {active}. Подробности есть в разделе «Дом», ваши обращения — в «Задачах»."
+        return "Сначала выберите дом на карте или в списке — тогда покажу его состояние."
+    if "ук" in lowered or "передать" in lowered:
+        return "Житель сообщает и подтверждает проблему. Домоуправляющий проверяет её и выбирает маршрут, затем УК принимает работу. Пока передача в УК демонстрационная, официальный канал не подключён."
+    if "домоуправ" in lowered or "роль" in lowered:
+        return "Домоуправляющий проверяет подтверждения жителей и решает, какое обращение передать. В MAX роль назначается организатором; самостоятельно получить доступ УК или исполнителя нельзя."
+    if "жалоб" in lowered or "проблем" in lowered or "обращен" in lowered:
+        return "Напишите боту в MAX, что произошло и где, или нажмите «Сообщить о проблеме» в приложении. Если место понятно из текста, лишних вопросов не будет. Статус появится в «Задачах»."
+    return "Я помогу сообщить о проблеме, найти статус обращения и разобраться с ролями. Спросите, например: «Как сообщить о поломке?» или «Что с моим домом?». Официальные сроки и контакты лучше уточнить в УК."
+
+
+@app.get("/assistant/status")
+def assistant_status():
+    return {"mode": "OPENROUTER" if settings.llm_mode == "openrouter" and settings.llm_api_key else "LOCAL_RULES", "available": True}
+
+
+@app.post("/assistant/chat")
+async def assistant_chat(payload: AssistantChatRequest, request: Request, db: Session = Depends(get_db)):
+    last = payload.messages[-1]
+    if last.role != "user":
+        raise HTTPException(status_code=422, detail="Последнее сообщение должно быть от пользователя")
+    house_id = payload.house_id if payload.house_id and db.get(House, payload.house_id) else None
+    # House status is answered from the database; never let an LLM invent it.
+    if "статус" in last.content.lower() or "что с домом" in last.content.lower():
+        return {"answer": local_assistant_answer(last.content, db, house_id), "mode": "LOCAL_RULES"}
+    if settings.llm_mode == "openrouter" and settings.llm_api_key:
+        init_data = request.headers.get("x-max-init-data", "")
+        # Public website visitors receive local guidance; only an explicitly
+        # launched MAX session may consume the external assistant quota.
+        if not init_data:
+            return {"answer": local_assistant_answer(last.content, db, house_id), "mode": "LOCAL_RULES"}
+        user_id, _ = max_identity(init_data)
+        now_tick = time.monotonic()
+        recent = [tick for tick in assistant_calls.get(user_id, []) if now_tick - tick < 60]
+        if len(recent) >= 10:
+            raise HTTPException(status_code=429, detail="Слишком много сообщений. Попробуйте через минуту.")
+        assistant_calls[user_id] = [*recent, now_tick]
+        # Only the latest message explicitly written in the assistant chat is
+        # sent upstream. Neither issue/group data nor earlier conversation or
+        # generated replies are included, even if a client supplies them.
+        content = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[электронная почта скрыта]", last.content)
+        content = re.sub(r"(?<!\d)(?:\+7|8)[\s()\-]*\d[\d\s()\-]{8,15}(?!\d)", "[телефон скрыт]", content)
+        safe_messages = [{"role": "user", "content": content}]
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                response = await client.post(
+                    settings.llm_api_url,
+                    headers={"Authorization": f"Bearer {settings.llm_api_key}", "Content-Type": "application/json", "HTTP-Referer": settings.max_miniapp_url, "X-Title": "DomPuls"},
+                    json={"model": settings.llm_model, "messages": [
+                        {"role": "system", "content": "Ты Макс, доброжелательный помощник ДомПульса. Отвечай по-русски, коротко и ясно. Не выдумывай факты о конкретном доме, сроках, законах и УК. Роли: житель сообщает, домоуправляющий передаёт, УК принимает и назначает, исполнитель выполняет, житель проверяет. Внешняя передача в УК пока демонстрационная. Не запрашивай персональные данные."},
+                        *safe_messages,
+                    ], "max_tokens": 300, "temperature": 0.3},
+                )
+                response.raise_for_status()
+                answer = response.json()["choices"][0]["message"]["content"]
+                if isinstance(answer, str) and answer.strip():
+                    return {"answer": answer.strip()[:2000], "mode": "OPENROUTER"}
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+            pass
+    return {"answer": local_assistant_answer(last.content, db, house_id), "mode": "LOCAL_RULES"}
 
 
 @app.get("/integrations/max/status")
@@ -168,9 +294,94 @@ def max_init_data(payload: MaxInitDataRequest):
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
+@app.post("/identity/max")
+def max_profile(payload: MaxInitDataRequest, db: Session = Depends(get_db)):
+    user_id, role = max_identity(payload.init_data)
+    profile = db.get(MaxProfile, user_id)
+    return {
+        "user_id": user_id,
+        "role": role,
+        "selected_house_id": profile.selected_house_id if profile else None,
+        "residency_status": profile.residency_status if profile else None,
+        "verified_resident": False,
+    }
+
+
+@app.post("/identity/max/house")
+def select_max_house(payload: MaxHouseSelectionRequest, db: Session = Depends(get_db)):
+    user_id, role = max_identity(payload.init_data)
+    if not db.get(House, payload.house_id):
+        not_found("House", payload.house_id)
+    profile = db.get(MaxProfile, user_id)
+    if profile is None:
+        profile = MaxProfile(user_id=user_id, selected_house_id=payload.house_id, residency_status="SELF_DECLARED")
+        db.add(profile)
+    else:
+        profile.selected_house_id = payload.house_id
+    audit(db, "MaxProfile", user_id, "HOUSE_SELECTED", user_id, details={"house_id": payload.house_id})
+    commit(db)
+    return {
+        "user_id": user_id,
+        "role": role,
+        "selected_house_id": profile.selected_house_id,
+        "residency_status": profile.residency_status,
+        "verified_resident": False,
+    }
+
+
+@app.get("/identity/max/by-user/{user_id}")
+def bot_selected_house(user_id: str, request: Request, db: Session = Depends(get_db)):
+    require_internal_bot(request)
+    profile = db.get(MaxProfile, user_id)
+    return {"selected_house_id": profile.selected_house_id if profile else None}
+
+
+@app.post("/identity/max/house/by-bot")
+def bot_select_house(payload: BotHouseSelectionRequest, request: Request, db: Session = Depends(get_db)):
+    require_internal_bot(request)
+    if not db.get(House, payload.house_id):
+        not_found("House", payload.house_id)
+    profile = db.get(MaxProfile, payload.user_id)
+    if profile is None:
+        profile = MaxProfile(user_id=payload.user_id, selected_house_id=payload.house_id, residency_status="SELF_DECLARED")
+        db.add(profile)
+    else:
+        profile.selected_house_id = payload.house_id
+    audit(db, "MaxProfile", payload.user_id, "HOUSE_SELECTED_IN_BOT", payload.user_id, details={"house_id": payload.house_id})
+    commit(db)
+    return {"selected_house_id": profile.selected_house_id}
+
+
 @app.get("/houses")
 def list_houses(db: Session = Depends(get_db)):
     return [house_dict(item) for item in db.scalars(select(House).order_by(House.id)).all()]
+
+
+@app.post("/houses", status_code=201)
+def add_koltsovo_house(payload: HouseCreate, request: Request, db: Session = Depends(get_db)):
+    actor = authorize(request, db, roles=("resident", "representative"))
+    existing = db.get(House, payload.id)
+    if existing:
+        if existing.address != payload.address:
+            raise HTTPException(status_code=409, detail="Этот идентификатор уже занят другим домом")
+        return house_dict(existing)
+    house = House(
+        id=payload.id,
+        address=payload.address,
+        region="Новосибирская область, р.п. Кольцово",
+        management_org=payload.management_org,
+        configuration_id=payload.id,
+        metadata_json={"lat": payload.lat, "lng": payload.lng, "entrances": payload.entrances, "condition": payload.condition, "provenance": "USER", "verified": False},
+    )
+    db.add(house)
+    db.flush()
+    db.add(Zone(id=f"{house.id}-common", house_id=house.id, type="common", name="Весь дом"))
+    for number in range(1, payload.entrances + 1):
+        db.add(Zone(id=f"{house.id}-entrance-{number}", house_id=house.id, type="entrance", number=str(number), name=f"Подъезд {number}"))
+    db.add(Zone(id=f"{house.id}-yard", house_id=house.id, type="yard", name="Двор и парковка"))
+    audit(db, "House", house.id, "RESIDENT_ADDED_HOUSE", actor or "demo", details={"verified": False})
+    commit(db)
+    return house_dict(house)
 
 
 @app.get("/houses/{house_id}")
@@ -268,8 +479,15 @@ def house_state_issue_cards(
                 "related_issue_ids": [item.id for item in candidates],
                 "related_signal_author_ids": sorted({signal.author_id for item in candidates for signal in item.signals}),
                 "signals_count": sum(len(item.signals) for item in candidates),
-                "confirmations_count": max(item.confirmations_count for item in candidates),
-                "recurrence_count": max(item.recurrence_count for item in candidates),
+                # The card opens `primary`; never show another row's counters
+                # as if they belonged to that issue. Legacy parallel rows stay
+                # visible through the related-issue marker.
+                "confirmations_count": primary.confirmations_count,
+                "recurrence_count": primary.recurrence_count,
+                "work_orders": [
+                    {"id": order.id, "status": order.status}
+                    for order in primary.work_orders
+                ],
             }
         )
         cards.append(card)
@@ -288,7 +506,7 @@ ROLE_TASK_STATES = {
     "resident": {IssueState.NEEDS_CONFIRMATION.value, IssueState.DONE_PENDING_VERIFICATION.value, IssueState.REOPENED.value},
     "representative": {IssueState.NEEDS_CONFIRMATION.value, IssueState.CONFIRMED.value, IssueState.ACTION_READY.value, IssueState.REOPENED.value},
     "uk": {IssueState.SUBMITTED.value, IssueState.ACCEPTED.value, IssueState.WORK_IN_PROGRESS.value},
-    "executor": {IssueState.ACCEPTED.value, IssueState.WORK_IN_PROGRESS.value},
+    "executor": {IssueState.ACCEPTED.value, IssueState.WORK_IN_PROGRESS.value, IssueState.REOPENED.value},
 }
 
 
@@ -301,12 +519,16 @@ def role_task_action(issue: dict[str, Any], role: str) -> dict[str, str] | None:
     state = issue.get("state")
     order = (issue.get("work_orders") or [])[-1:] if isinstance(issue.get("work_orders"), list) else []
     order_status = order[0].get("status") if order else None
+    if role == "uk" and state == IssueState.ACCEPTED.value and order_status:
+        return {"id": "track", "label": "Открыть назначенную работу"}
+    if role == "executor" and state == IssueState.ACCEPTED.value and not order_status:
+        return None
     actions: dict[tuple[str, str], tuple[str, str]] = {
         ("resident", IssueState.NEEDS_CONFIRMATION.value): ("confirm", "У меня тоже"),
         ("resident", IssueState.DONE_PENDING_VERIFICATION.value): ("verify", "Проверить результат"),
         ("resident", IssueState.REOPENED.value): ("open", "Посмотреть переоткрытую проблему"),
         ("representative", IssueState.NEEDS_CONFIRMATION.value): ("confirm", "Проверить подтверждения"),
-        ("representative", IssueState.CONFIRMED.value): ("route", "Выбрать маршрут"),
+        ("representative", IssueState.CONFIRMED.value): ("prepare", "Подготовить действие"),
         ("representative", IssueState.ACTION_READY.value): ("submit", "Передать в УК"),
         ("representative", IssueState.REOPENED.value): ("review", "Проверить повторно"),
         ("uk", IssueState.SUBMITTED.value): ("accept", "Принять обращение"),
@@ -314,6 +536,7 @@ def role_task_action(issue: dict[str, Any], role: str) -> dict[str, str] | None:
         ("uk", IssueState.WORK_IN_PROGRESS.value): ("track", "Открыть работу"),
         ("executor", IssueState.ACCEPTED.value): ("start", "Начать работу"),
         ("executor", IssueState.WORK_IN_PROGRESS.value): ("work", "Продолжить работу"),
+        ("executor", IssueState.REOPENED.value): ("rework", "Начать доработку"),
     }
     if role == "executor" and state == IssueState.WORK_IN_PROGRESS.value and order_status == WorkOrderState.IN_PROGRESS.value:
         return {"id": "work", "label": "Продолжить работу"}
@@ -331,11 +554,24 @@ def list_assets(house_id: str, db: Session = Depends(get_db)):
 @app.get("/houses/{house_id}/state")
 def house_state(
     house_id: str,
+    request: Request,
     viewer_id: str | None = Query(default=None, max_length=100),
     role: str = Query(default="resident", pattern="^(resident|representative|uk|executor)$"),
     db: Session = Depends(get_db),
 ):
     house = db.get(House, house_id) or not_found("House", house_id)
+    if settings.auth_mode == "required":
+        internal_key = request.headers.get("x-dompuls-internal-key", "")
+        internal = bool(settings.internal_api_key and hmac.compare_digest(internal_key, settings.internal_api_key))
+        if not internal:
+            init_data = request.headers.get("x-max-init-data", "")
+            if init_data:
+                viewer_id, role = max_identity(init_data)
+                profile = db.get(MaxProfile, viewer_id)
+                if not profile or profile.selected_house_id != house_id:
+                    viewer_id, role = None, "resident"
+            else:
+                viewer_id, role = None, "resident"
     issues = db.scalars(select(Issue).where(Issue.house_id == house_id)).all()
     assets = db.scalars(select(Asset).where(Asset.house_id == house_id)).all()
     zones = db.scalars(select(Zone).where(Zone.house_id == house_id)).all()
@@ -348,10 +584,9 @@ def house_state(
     )
     for card in issue_cards:
         card.pop("related_signal_author_ids", None)
-    # Detailed issue payloads contain work orders; the compact House State
-    # cards do not. The queue action is still useful for role-aware navigation
-    # and is calculated from the current lifecycle state only.
-    task_pool = my_issue_cards if role == "resident" and viewer_id else issue_cards
+    # Compact cards carry work-order status so the queue does not offer a
+    # second assignment after a work order has already been created.
+    task_pool = my_issue_cards if role == "resident" else issue_cards
     my_tasks = []
     for card in task_pool:
         action = role_task_action(card, role)
@@ -361,6 +596,8 @@ def house_state(
     recent_signals = db.scalars(
         select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(40)
     ).all()
+    if settings.auth_mode == "required" and viewer_id is None:
+        recent_signals = []
     signal_feed = []
     for item in recent_signals:
         linked_issue = db.scalar(select(Issue).join(Issue.signals).where(Signal.id == item.id))
@@ -399,6 +636,7 @@ def house_state(
             "initiatives": len(initiatives),
         },
         "assets": [asset_dict(item, operational_state(db, item)) for item in assets],
+        "zones": [zone_dict(item) for item in zones],
         "issues": issue_cards,
         "my_issues": my_issue_cards,
         "viewer": {"id": viewer_id, "role": role, "role_label": ROLE_LABELS[role]},
@@ -460,6 +698,38 @@ def attach_signals(issue: Issue, signals: list[Signal]) -> int:
     return len({item.author_id for item in added if item.author_id not in existing_authors})
 
 
+CATEGORY_NAMES = {
+    "elevator": "Лифт",
+    "lighting": "Освещение",
+    "water": "Водоснабжение",
+    "heating": "Отопление",
+    "cleaning": "Уборка",
+    "door": "Дверь и домофон",
+    "parking": "Парковка",
+    "other": "Общая зона",
+}
+
+
+def inferred_asset(db: Session, house_id: str, zone: Zone | None, category: str) -> Asset | None:
+    """Create a clearly marked candidate asset for resident-added houses only."""
+    if not house_id.startswith("koltsovo-") or zone is None or category == "other":
+        return None
+    asset_id = f"{zone.id}-{category}"
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        asset = Asset(
+            id=asset_id,
+            house_id=house_id,
+            zone_id=zone.id,
+            type=category,
+            name=f"{CATEGORY_NAMES.get(category, category)} · {zone.name}",
+            attributes={"provenance": "AI_INFERENCE", "verified": False},
+        )
+        db.add(asset)
+        db.flush()
+    return asset
+
+
 def recent_conversation_issue(db: Session, signal: Signal) -> Issue | None:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     active_states = [
@@ -480,7 +750,11 @@ def recent_conversation_issue(db: Session, signal: Signal) -> Issue | None:
         query = query.where(Signal.chat_id == signal.chat_id)
     else:
         query = query.where(Signal.chat_id.is_(None), Signal.author_id == signal.author_id)
-    return db.scalar(query.limit(1))
+    # A short follow-up is safe to attach only when this conversation has one
+    # unambiguous active incident. Never bind it to an arbitrary latest issue.
+    candidates = db.scalars(query.limit(10)).unique().all()
+    distinct_assets = {(item.zone_id, item.asset_id, item.category) for item in candidates}
+    return candidates[0] if len(distinct_assets) == 1 else None
 
 
 def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
@@ -506,10 +780,13 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
     signal.ai_actionability_score = extraction.confidence
     extraction, context_signals, context_text = contextual_extraction(db, signal, extraction)
     signal.ai_actionability_score = extraction.confidence
-    if not extraction.actionable or extraction.intent == "noise":
-        lowered = payload.text.lower()
-        followup_markers = ("у меня тоже", "подтвержда", "вчера", "снова", "опять", "не работ")
-        conversation_issue = recent_conversation_issue(db, signal) if any(marker in lowered for marker in followup_markers) else None
+    lowered = payload.text.lower()
+    followup_markers = ("у меня тоже", "подтвержда", "вчера", "снова", "опять", "не работ")
+    ambiguous_followup = extraction.intent in {"noise", "confirmation"} or (
+        extraction.intent == "issue" and extraction.category == "other" and "zone" in extraction.missing_fields
+    )
+    if ambiguous_followup and any(marker in lowered for marker in followup_markers):
+        conversation_issue = recent_conversation_issue(db, signal)
         if conversation_issue:
             conversation_issue.confirmations_count += attach_signals(conversation_issue, [signal])
             conversation_issue.last_seen_at = datetime.now(timezone.utc)
@@ -529,6 +806,7 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
                 "clustered": True,
                 "contextual_followup": True,
             }
+    if not extraction.actionable or extraction.intent == "noise":
         commit(db)
         return {"signal": signal_dict(signal), "classification": extraction.model_dump(), "result": "NO_ACTION"}
     resolution = resolve_zone_asset(db, payload.house_id, extraction)
@@ -588,7 +866,8 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
             "fallback": {"type": "ZONE_CLARIFICATION", "message": "Уточните место проблемы", "choices": [zone_dict(item) for item in db.scalars(select(Zone).where(Zone.house_id == payload.house_id)).all()]},
         }
     zone_id = payload.manual_zone_id or (resolution.zone.id if resolution.zone else None)
-    asset_id = resolution.asset.id if resolution.asset else None
+    asset = resolution.asset or inferred_asset(db, payload.house_id, db.get(Zone, zone_id) if zone_id else None, payload.manual_category or extraction.category)
+    asset_id = asset.id if asset else None
     candidate, score = find_duplicate(db, house_id=payload.house_id, zone_id=zone_id, asset_id=asset_id, category=extraction.category, text=context_text)
     if candidate and score >= 0.78:
         candidate.confirmations_count += attach_signals(candidate, context_signals)
@@ -612,7 +891,7 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
         }
     category = payload.manual_category or extraction.category
     count = recurrence_count(db, payload.house_id, asset_id, category)
-    title = (resolution.asset.name if resolution.asset else category.capitalize()) + ": проблема"
+    title = (asset.name if asset else CATEGORY_NAMES.get(category, "Проблема дома")) + ": проблема"
     issue = Issue(
         house_id=payload.house_id,
         zone_id=zone_id,
@@ -634,7 +913,13 @@ def process_signal(db: Session, payload: SignalCreate) -> dict[str, Any]:
 
 
 @app.post("/signals", status_code=201)
-def create_signal(payload: SignalCreate, db: Session = Depends(get_db)):
+def create_signal(payload: SignalCreate, request: Request, db: Session = Depends(get_db)):
+    actor = authorize(request, db, house_id=payload.house_id, roles=("resident", "representative"))
+    if actor:
+        payload.author_id = actor
+        payload.source_type = "max_webapp"
+        payload.force_ai_failure = False
+        payload = SignalCreate.model_validate(payload.model_dump())
     return process_signal(db, payload)
 
 
@@ -645,7 +930,7 @@ def read_signal(signal_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/signals/{signal_id}/resolve")
-def resolve_signal(signal_id: str, payload: ManualResolveRequest, db: Session = Depends(get_db)):
+def resolve_signal(signal_id: str, payload: ManualResolveRequest, request: Request, db: Session = Depends(get_db)):
     """Finish a signal after the AI fallback asked the user for context.
 
     The original signal is reused instead of creating a second synthetic signal.
@@ -653,6 +938,7 @@ def resolve_signal(signal_id: str, payload: ManualResolveRequest, db: Session = 
     allowing the resident to choose the category/zone when confidence is low.
     """
     signal = db.get(Signal, signal_id) or not_found("Signal", signal_id)
+    authorize(request, db, house_id=signal.house_id, roles=("resident", "representative"), owner_id=signal.author_id)
     zone = db.get(Zone, payload.zone_id)
     if not zone or zone.house_id != signal.house_id:
         raise HTTPException(status_code=409, detail="Zone does not belong to signal house")
@@ -668,7 +954,7 @@ def resolve_signal(signal_id: str, payload: ManualResolveRequest, db: Session = 
             .order_by(Asset.name)
         )
     if not asset:
-        asset = db.scalar(select(Asset).where(Asset.house_id == signal.house_id, Asset.zone_id == zone.id).order_by(Asset.name))
+        asset = inferred_asset(db, signal.house_id, zone, payload.category)
     signal.ai_actionability_score = signal.ai_actionability_score or 0.5
     candidate, score = find_duplicate(
         db,
@@ -691,7 +977,7 @@ def resolve_signal(signal_id: str, payload: ManualResolveRequest, db: Session = 
         asset_id=asset.id if asset else None,
         category=payload.category,
         symptom="unknown",
-        title=f"{asset.name if asset else payload.category.capitalize()}: проблема",
+        title=f"{asset.name if asset else CATEGORY_NAMES.get(payload.category, 'Проблема дома')}: проблема",
         description=signal.text,
         severity="high" if recurrence > 1 else "medium",
         recurrence_count=recurrence,
@@ -707,8 +993,11 @@ def resolve_signal(signal_id: str, payload: ManualResolveRequest, db: Session = 
 
 
 @app.post("/signals/{signal_id}/resolve-duplicate")
-def resolve_duplicate(signal_id: str, payload: DuplicateResolutionRequest, db: Session = Depends(get_db)):
+def resolve_duplicate(signal_id: str, payload: DuplicateResolutionRequest, request: Request, db: Session = Depends(get_db)):
     signal = db.get(Signal, signal_id) or not_found("Signal", signal_id)
+    actor = authorize(request, db, house_id=signal.house_id, roles=("resident", "representative"), owner_id=signal.author_id)
+    if actor:
+        payload.actor_id = actor
     candidate = get_issue(db, payload.candidate_issue_id)
     if candidate.house_id != signal.house_id:
         raise HTTPException(status_code=409, detail="Signal and candidate belong to different houses")
@@ -752,13 +1041,44 @@ def list_issues(house_id: str | None = None, db: Session = Depends(get_db)):
 
 
 @app.get("/issues/{issue_id}")
-def read_issue(issue_id: str, db: Session = Depends(get_db)):
-    return issue_dict(get_issue(db, issue_id), detailed=True)
+def read_issue(issue_id: str, request: Request, db: Session = Depends(get_db)):
+    issue = get_issue(db, issue_id)
+    if settings.auth_mode == "required" and not request.headers.get("x-max-init-data") and not request.headers.get("x-dompuls-internal-key"):
+        return issue_dict(issue)
+    authorize(request, db, house_id=issue.house_id)
+    result = issue_dict(issue, detailed=True)
+    if issue.state in ACTIVE_ISSUE_STATES:
+        siblings = [
+            item.id
+            for item in db.scalars(select(Issue).where(Issue.house_id == issue.house_id, Issue.id != issue.id, Issue.state.in_(ACTIVE_ISSUE_STATES))).all()
+            if _issue_display_key(item) == _issue_display_key(issue)
+        ]
+        result["related_issue_ids"] = siblings
+        result["related_issue_count"] = 1 + len(siblings)
+    return result
+
+
+@app.post("/issues/{issue_id}/comments", status_code=201)
+def comment_on_issue(issue_id: str, payload: IssueCommentCreate, request: Request, db: Session = Depends(get_db)):
+    issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id)
+    if actor:
+        payload.author_id = actor
+        payload.author_role = settings.role_for_max_user(actor)
+    comment = IssueComment(issue=issue, **payload.model_dump())
+    db.add(comment)
+    db.flush()
+    audit(db, "Issue", issue.id, "COMMENT_ADDED", payload.author_id, details={"comment_id": comment.id, "photos": len(payload.photos)})
+    commit(db)
+    return issue_dict(issue, detailed=True)
 
 
 @app.post("/issues/{issue_id}/confirm")
-def confirm_issue(issue_id: str, payload: ConfirmRequest, db: Session = Depends(get_db)):
+def confirm_issue(issue_id: str, payload: ConfirmRequest, request: Request, db: Session = Depends(get_db)):
     issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id, roles=("representative",))
+    if actor:
+        payload.actor_id = actor
     run_issue_transition(db, issue, IssueState.CONFIRMED, payload.actor_id)
     issue.confirmations_count += 1
     create_action(db, issue)
@@ -768,8 +1088,11 @@ def confirm_issue(issue_id: str, payload: ConfirmRequest, db: Session = Depends(
 
 
 @app.post("/issues/{issue_id}/route")
-def select_issue_route(issue_id: str, payload: RouteSelectionRequest, db: Session = Depends(get_db)):
+def select_issue_route(issue_id: str, payload: RouteSelectionRequest, request: Request, db: Session = Depends(get_db)):
     issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id, roles=("representative",))
+    if actor:
+        payload.actor_id = actor
     if issue.state != IssueState.ACTION_READY.value:
         raise HTTPException(status_code=409, detail="Маршрут можно выбрать только для готовой к передаче проблемы")
     if not issue.actions:
@@ -789,9 +1112,26 @@ def select_issue_route(issue_id: str, payload: RouteSelectionRequest, db: Sessio
     return issue_dict(issue, detailed=True)
 
 
-@app.post("/issues/{issue_id}/resident-confirm")
-def resident_confirm_issue(issue_id: str, payload: ResidentConfirmRequest, db: Session = Depends(get_db)):
+@app.post("/issues/{issue_id}/prepare")
+def prepare_issue_action(issue_id: str, request: Request, db: Session = Depends(get_db)):
+    """Recover a confirmed issue whose action was not prepared yet."""
     issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id, roles=("representative",))
+    if issue.state != IssueState.CONFIRMED.value:
+        raise HTTPException(status_code=409, detail="Действие можно подготовить только для подтверждённой проблемы")
+    if not issue.actions:
+        create_action(db, issue)
+    run_issue_transition(db, issue, IssueState.ACTION_READY, actor or "representative-demo")
+    commit(db)
+    return issue_dict(issue, detailed=True)
+
+
+@app.post("/issues/{issue_id}/resident-confirm")
+def resident_confirm_issue(issue_id: str, payload: ResidentConfirmRequest, request: Request, db: Session = Depends(get_db)):
+    issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id, roles=("resident", "representative"))
+    if actor:
+        payload.actor_id = actor
     allowed = {IssueState.NEEDS_CONFIRMATION.value, IssueState.CONFIRMED.value, IssueState.ACTION_READY.value}
     if issue.state not in allowed:
         raise HTTPException(status_code=409, detail="Issue no longer accepts resident confirmations")
@@ -813,11 +1153,16 @@ def resident_confirm_issue(issue_id: str, payload: ResidentConfirmRequest, db: S
 
 
 @app.post("/issues/{issue_id}/submit")
-def submit_issue(issue_id: str, payload: SubmitRequest, db: Session = Depends(get_db)):
+def submit_issue(issue_id: str, payload: SubmitRequest, request: Request, db: Session = Depends(get_db)):
     issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id, roles=("representative",))
+    if actor:
+        payload.actor_id = actor
     if not issue.actions:
         raise HTTPException(status_code=409, detail="Issue has no confirmed action")
     action = issue.actions[-1]
+    if action.confidence < 0.7 and not action.manual_destination:
+        raise HTTPException(status_code=409, detail="Сначала выберите адресата вручную: маршрут пока не подтверждён")
     config = get_house_config(issue.house_id)
     # A manual route choice wins over the config routing; otherwise the
     # "Выбрать адресата" button would only repaint the label.
@@ -845,16 +1190,23 @@ def submit_issue(issue_id: str, payload: SubmitRequest, db: Session = Depends(ge
 
 
 @app.post("/issues/{issue_id}/accept")
-def accept_issue(issue_id: str, payload: AcceptRequest, db: Session = Depends(get_db)):
+def accept_issue(issue_id: str, payload: AcceptRequest, request: Request, db: Session = Depends(get_db)):
     issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id, roles=("uk",))
+    if actor:
+        payload.actor_id = actor
     run_issue_transition(db, issue, IssueState.ACCEPTED, payload.actor_id)
     commit(db)
     return issue_dict(issue, detailed=True)
 
 
 @app.post("/issues/{issue_id}/verify")
-def verify_issue(issue_id: str, payload: VerifyRequest, db: Session = Depends(get_db)):
+def verify_issue(issue_id: str, payload: VerifyRequest, request: Request, db: Session = Depends(get_db)):
     issue = get_issue(db, issue_id)
+    actor = authorize(request, db, house_id=issue.house_id, roles=("resident", "representative"))
+    if actor:
+        payload.verifier_id = actor
+        payload.verifier_type = settings.role_for_max_user(actor)
     verification = Verification(issue=issue, **payload.model_dump())
     db.add(verification)
     if payload.result == "confirmed":
@@ -889,8 +1241,9 @@ def asset_timeline(asset_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/work-orders", status_code=201)
-def create_work_order(payload: WorkOrderCreate, db: Session = Depends(get_db)):
+def create_work_order(payload: WorkOrderCreate, request: Request, db: Session = Depends(get_db)):
     issue = get_issue(db, payload.issue_id)
+    authorize(request, db, house_id=issue.house_id, roles=("uk",))
     if issue.state != IssueState.ACCEPTED.value:
         raise HTTPException(status_code=409, detail="Issue must be ACCEPTED before a work order is created")
     order = WorkOrder(
@@ -909,8 +1262,19 @@ def create_work_order(payload: WorkOrderCreate, db: Session = Depends(get_db)):
 
 
 @app.patch("/work-orders/{order_id}")
-def patch_work_order(order_id: str, payload: WorkOrderPatch, db: Session = Depends(get_db)):
+def patch_work_order(order_id: str, payload: WorkOrderPatch, request: Request, db: Session = Depends(get_db)):
     order = db.get(WorkOrder, order_id) or not_found("WorkOrder", order_id)
+    actor = authorize(request, db, house_id=order.issue.house_id, roles=("executor", "uk"))
+    if actor:
+        payload.actor_id = actor
+    if payload.status == WorkOrderState.DONE.value:
+        started = order.started_at
+        fresh = bool(started and any(
+            item.created_at and item.created_at.replace(tzinfo=timezone.utc) >= started.replace(tzinfo=timezone.utc)
+            for item in order.evidence
+        ))
+        if not fresh:
+            raise HTTPException(status_code=409, detail="Приложите подтверждение выполненной работы в текущем цикле")
     try:
         transition_work_order(db, order, WorkOrderState(payload.status), payload.actor_id)
     except InvalidTransition as exc:
@@ -920,8 +1284,11 @@ def patch_work_order(order_id: str, payload: WorkOrderPatch, db: Session = Depen
 
 
 @app.post("/work-orders/{order_id}/evidence", status_code=201)
-def add_evidence(order_id: str, payload: EvidenceCreate, db: Session = Depends(get_db)):
+def add_evidence(order_id: str, payload: EvidenceCreate, request: Request, db: Session = Depends(get_db)):
     order = db.get(WorkOrder, order_id) or not_found("WorkOrder", order_id)
+    actor = authorize(request, db, house_id=order.issue.house_id, roles=("executor",))
+    if actor:
+        payload.author_id = actor
     if order.status not in {WorkOrderState.IN_PROGRESS.value, WorkOrderState.DONE.value}:
         raise HTTPException(status_code=409, detail="Evidence can only be added during or after work")
     evidence = Evidence(work_order=order, **payload.model_dump())
@@ -932,7 +1299,8 @@ def add_evidence(order_id: str, payload: EvidenceCreate, db: Session = Depends(g
 
 
 @app.post("/initiatives", status_code=201)
-def create_initiative(payload: InitiativeCreate, db: Session = Depends(get_db)):
+def create_initiative(payload: InitiativeCreate, request: Request, db: Session = Depends(get_db)):
+    authorize(request, db, house_id=payload.house_id, roles=("resident", "representative"))
     if not db.get(House, payload.house_id):
         not_found("House", payload.house_id)
     initiative = Initiative(**payload.model_dump(), votes={})
@@ -953,8 +1321,11 @@ def read_initiative(initiative_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/initiatives/{initiative_id}/poll")
-def vote(initiative_id: str, payload: PollRequest, db: Session = Depends(get_db)):
+def vote(initiative_id: str, payload: PollRequest, request: Request, db: Session = Depends(get_db)):
     initiative = db.get(Initiative, initiative_id) or not_found("Initiative", initiative_id)
+    actor = authorize(request, db, house_id=initiative.house_id, roles=("resident", "representative"))
+    if actor:
+        payload.voter_id = actor
     if initiative.state != InitiativeState.INFORMAL_POLL.value:
         raise HTTPException(status_code=409, detail="Poll is not open")
     if payload.option not in initiative.options:
@@ -975,8 +1346,11 @@ def vote(initiative_id: str, payload: PollRequest, db: Session = Depends(get_db)
 
 
 @app.post("/initiatives/{initiative_id}/handoff")
-def handoff(initiative_id: str, payload: HandoffRequest, db: Session = Depends(get_db)):
+def handoff(initiative_id: str, payload: HandoffRequest, request: Request, db: Session = Depends(get_db)):
     initiative = db.get(Initiative, initiative_id) or not_found("Initiative", initiative_id)
+    actor = authorize(request, db, house_id=initiative.house_id, roles=("representative",))
+    if actor:
+        payload.actor_id = actor
     if initiative.state == InitiativeState.INFORMAL_POLL.value:
         transition_initiative(db, initiative, InitiativeState.RESULT, payload.actor_id)
         initiative.informal_poll_state = "CLOSED"

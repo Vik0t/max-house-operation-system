@@ -4,6 +4,10 @@ export type House = {
   region: string
   management_org: string
   configuration_id: string
+  lat?: number | null
+  lng?: number | null
+  condition?: string | null
+  metadata?: { entrances?: number; provenance?: string; verified?: boolean; [key: string]: unknown }
 }
 
 export type Asset = {
@@ -21,6 +25,7 @@ export type Action = {
   rationale: string
   confidence: number
   provenance: string
+  manual_destination?: 'management_org' | 'representative' | null
 }
 
 export type Evidence = {
@@ -36,7 +41,18 @@ export type WorkOrder = {
   status: string
   assignee_id: string
   title: string
+  started_at?: string | null
   evidence: Evidence[]
+}
+
+export type IssueComment = {
+  id: string
+  issue_id: string
+  author_id: string
+  author_role: string
+  text: string
+  created_at: string
+  photos?: string[]
 }
 
 export type Issue = {
@@ -58,9 +74,12 @@ export type Issue = {
   signals_count?: number
   provenance: string
   first_seen_at: string
+  decline_reason?: string | null
+  photos?: string[]
   actions?: Action[]
   submissions?: { id: string; is_simulated: boolean; destination_id: string }[]
   work_orders?: WorkOrder[]
+  comments?: IssueComment[]
   signals?: Signal[]
 }
 
@@ -91,6 +110,7 @@ export type Initiative = {
 
 export type HouseState = {
   house: House
+  zones?: Array<{ id: string; name: string; type: string; number: string | null }>
   metrics: {
     active_issues: number
     work_in_progress: number
@@ -112,7 +132,7 @@ export type HouseState = {
   integration: { max: string; external_submission: string }
 }
 
-export type ViewerRole = 'resident' | 'representative' | 'uk' | 'executor'
+export type ViewerRole = 'resident' | 'representative' | 'uk' | 'executor' | 'admin'
 
 export type SignalResult = {
   signal?: { id: string }
@@ -126,4 +146,5 @@ export type SignalResult = {
     actions?: string[]
   }
   clustered?: boolean
+  classification?: { category: string; intent: string; confidence: number }
 }

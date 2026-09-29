@@ -20,7 +20,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://dompuls:dompuls@db:5432/dompuls
-      CORS_ORIGINS: http://localhost:${WEB_PORT:-3000}
+      CORS_ORIGINS: http://localhost:${WEB_PORT:-3000},http://localhost:4173
     depends_on:
       db:
         condition: service_healthy
@@ -57,6 +57,7 @@ services:
       dockerfile: apps/miniapp/Dockerfile
       args:
         VITE_API_URL: http://localhost:${API_PORT:-8000}
+        VITE_ALLOW_REMOTE_DEMO: "true"
     depends_on:
       api:
         condition: service_healthy

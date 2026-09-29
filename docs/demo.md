@@ -9,7 +9,7 @@ docker compose up --build -d
 curl http://localhost:8000/health
 ```
 
-Open <http://localhost:3000>. The first screen is a role-specific task queue. Use the role selector only as a visible demo control; in MAX the role is selected during `/start` and later comes from organization permissions. Keep `/docs` in a second tab as architecture proof.
+Open <http://localhost:3000/?demo=true>. The first screen is a role-specific task queue. `?demo=true` works only in the local Docker build; the public GitHub Pages build requires signed MAX identity for write actions. Bot role selection is temporarily enabled by `BOT_ROLE_MODE=showcase`; set `BOT_ROLE_MODE=assigned` and MAX-ID allowlists before real operation. Keep `/docs` in a second tab as architecture proof.
 
 For the real MAX demo, open the configured bot, send `/start`, choose a role, then send the lift messages there. Watch `docker compose logs -f bot`; the same Issue will appear in the mini-app. Use `Сменить дом` or `/дом_b` to demonstrate config-driven switching from the bot.
 
@@ -37,7 +37,7 @@ Open the current Issue with the appropriate role and press:
 → Принять обращение
 → Назначить исполнителя
 → Начать работу
-→ Зафиксировать выполнение
+→ Приложить фото выполненной работы
 → Завершить работу
 → Да, всё исправлено
 ```
@@ -61,4 +61,4 @@ Mention 20 clean E2E runs, polling/webhook idempotency, state-machine rejection,
 - Reset: `./scripts/reset-demo.sh`.
 - API health: `curl http://localhost:8000/health`.
 - Logs: `docker compose logs --tail=100 api bot`.
-- If MAX CA/token is unavailable, keep direct input and show `REAL · CONFIGURED`; never call it connected.
+- If MAX CA/token is unavailable, keep direct input and show the exact connection state; never call it connected.

@@ -34,6 +34,19 @@ class House(Base, TimestampMixin):
     assets: Mapped[list["Asset"]] = relationship(back_populates="house", cascade="all, delete-orphan")
 
 
+class MaxProfile(Base, TimestampMixin):
+    """A MAX identity and the house the user selected for resident actions.
+
+    Choosing a house is a self-declaration, not proof of ownership or residence.
+    Privileged roles are never stored here and come only from server allowlists.
+    """
+
+    __tablename__ = "max_profiles"
+    user_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    selected_house_id: Mapped[str | None] = mapped_column(ForeignKey("houses.id"), nullable=True)
+    residency_status: Mapped[str] = mapped_column(String(30), default="SELF_DECLARED")
+
+
 class Zone(Base, TimestampMixin):
     __tablename__ = "zones"
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
@@ -101,6 +114,19 @@ class Issue(Base, TimestampMixin):
     submissions: Mapped[list["Submission"]] = relationship(back_populates="issue", cascade="all, delete-orphan")
     work_orders: Mapped[list["WorkOrder"]] = relationship(back_populates="issue", cascade="all, delete-orphan")
     verifications: Mapped[list["Verification"]] = relationship(back_populates="issue", cascade="all, delete-orphan")
+    comments: Mapped[list["IssueComment"]] = relationship(back_populates="issue", cascade="all, delete-orphan")
+
+
+class IssueComment(Base):
+    __tablename__ = "issue_comments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    issue_id: Mapped[str] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(String(100))
+    author_role: Mapped[str] = mapped_column(String(40))
+    text: Mapped[str] = mapped_column(Text)
+    photos: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    issue: Mapped[Issue] = relationship(back_populates="comments")
 
 
 class Action(Base, TimestampMixin):
@@ -161,7 +187,7 @@ class Evidence(Base, TimestampMixin):
     work_order_id: Mapped[str] = mapped_column(ForeignKey("work_orders.id", ondelete="CASCADE"), index=True)
     type: Mapped[str] = mapped_column(String(50))
     author_id: Mapped[str] = mapped_column(String(100))
-    uri: Mapped[str] = mapped_column(String(500))
+    uri: Mapped[str] = mapped_column(Text)
     comment: Mapped[str] = mapped_column(Text, default="")
     provenance: Mapped[str] = mapped_column(String(30), default=Provenance.USER.value)
     work_order: Mapped[WorkOrder] = relationship(back_populates="evidence")
@@ -224,4 +250,3 @@ class WebhookEvent(Base):
     payload_hash: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(30), default="PROCESSED")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-

@@ -30,12 +30,38 @@ class SignalCreate(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     author_id: str = Field(default="resident-demo", max_length=100)
     chat_id: str | None = Field(default=None, max_length=100)
-    source_type: Literal["max_message", "bot_dialog", "manual", "imported"] = "manual"
+    source_type: Literal["max_message", "max_webapp", "bot_dialog", "manual", "imported"] = "manual"
     external_id: str | None = Field(default=None, max_length=160)
     attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
     manual_category: str | None = None
     manual_zone_id: str | None = None
     force_ai_failure: bool = False
+
+    @model_validator(mode="after")
+    def safe_webapp_attachments(self):
+        if self.source_type == "max_webapp":
+            for item in self.attachments:
+                uri = str(item.get("uri") or "")
+                if item.get("type") != "image" or not safe_image_data_uri(uri):
+                    raise ValueError("Only small JPEG, PNG or WebP images are supported")
+        return self
+
+
+def safe_image_data_uri(uri: str) -> bool:
+    return len(uri) <= 700_000 and uri.startswith(("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,"))
+
+
+class IssueCommentCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    author_id: str = Field(default="resident-demo", max_length=100)
+    author_role: Literal["resident", "representative", "uk", "executor"] = "resident"
+    photos: list[str] = Field(default_factory=list, max_length=3)
+
+    @model_validator(mode="after")
+    def safe_photos(self):
+        if any(not safe_image_data_uri(uri) for uri in self.photos):
+            raise ValueError("Only small JPEG, PNG or WebP images are supported")
+        return self
 
 
 class ConfirmRequest(BaseModel):
@@ -77,12 +103,12 @@ class WorkOrderPatch(BaseModel):
 class EvidenceCreate(BaseModel):
     type: Literal["before_photo", "after_photo", "document", "comment", "measurement"]
     author_id: str = "executor-demo"
-    uri: str = Field(min_length=1, max_length=500)
+    uri: str = Field(min_length=1, max_length=700_000)
     comment: str = Field(default="", max_length=1000)
 
     @model_validator(mode="after")
     def safe_uri(self):
-        allowed = ("https://", "http://", "/demo/", "data:image/")
+        allowed = ("https://", "/demo/", "data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
         if not self.uri.startswith(allowed):
             raise ValueError("Evidence URI must be http(s), /demo/, or a data image")
         return self
@@ -136,3 +162,38 @@ class MaxWebhook(BaseModel):
 
 class MaxInitDataRequest(BaseModel):
     init_data: str = Field(min_length=1, max_length=16_000)
+
+
+class MaxHouseSelectionRequest(MaxInitDataRequest):
+    house_id: str = Field(min_length=1, max_length=64)
+
+
+class BotHouseSelectionRequest(BaseModel):
+    user_id: str = Field(min_length=1, max_length=100)
+    house_id: str = Field(min_length=1, max_length=64)
+
+
+class HouseCreate(BaseModel):
+    id: str = Field(pattern=r"^koltsovo-[a-zA-Z0-9-]{1,40}$")
+    address: str = Field(min_length=8, max_length=300)
+    lat: float = Field(ge=54.92, le=54.97)
+    lng: float = Field(ge=83.17, le=83.22)
+    entrances: int = Field(default=1, ge=1, le=20)
+    management_org: str = Field(default="Не подтверждена", max_length=200)
+    condition: str = Field(default="Нет данных", max_length=200)
+
+    @model_validator(mode="after")
+    def koltsovo_only(self):
+        if "кольцово" not in self.address.lower():
+            raise ValueError("Only houses in Koltsovo are supported")
+        return self
+
+
+class AssistantMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class AssistantChatRequest(BaseModel):
+    messages: list[AssistantMessage] = Field(min_length=1, max_length=10)
+    house_id: str | None = None

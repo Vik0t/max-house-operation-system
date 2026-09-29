@@ -79,7 +79,10 @@ def find_duplicate(
     category: str,
     text: str,
 ) -> tuple[Issue | None, float]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    # An unresolved incident can stay open beyond a week. Do not fork a new
+    # Issue for the same asset merely because the original signal is 8+ days
+    # old; closed incidents are still excluded and handled as recurrence.
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     candidates = db.scalars(
         select(Issue).where(
             Issue.house_id == house_id,
@@ -123,4 +126,3 @@ def create_action(db: Session, issue: Issue) -> Action:
     )
     db.add(action)
     return action
-

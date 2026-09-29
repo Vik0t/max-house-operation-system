@@ -13,7 +13,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("actions", sa.Column("manual_destination", sa.String(40), nullable=True))
+    columns = {item["name"] for item in sa.inspect(op.get_bind()).get_columns("actions")}
+    if "manual_destination" not in columns:
+        op.add_column("actions", sa.Column("manual_destination", sa.String(40), nullable=True))
 
 
 def downgrade() -> None:

@@ -1,5 +1,14 @@
 import type { Issue } from './types'
 
+export function pluralRu(count: number, one: string, few: string, many: string): string {
+  const lastTwo = count % 100
+  const last = count % 10
+  if (lastTwo >= 11 && lastTwo <= 14) return many
+  if (last === 1) return one
+  if (last >= 2 && last <= 4) return few
+  return many
+}
+
 const categoryLabels: Record<string, string> = {
   elevator: 'Лифт',
   lighting: 'Освещение',
@@ -33,4 +42,33 @@ export function provenanceLabel(value: string): string {
     AI_INFERENCE: 'вывод ИИ, требует проверки',
     SYNTHETIC: 'демонстрационные данные',
   }[value] || 'источник уточняется'
+}
+
+const severityLabels: Record<string, string> = {
+  LOW: 'Низкая',
+  MEDIUM: 'Средняя',
+  HIGH: 'Высокая',
+  CRITICAL: 'Критичная',
+}
+
+export function severityLabel(value: string): string {
+  return severityLabels[value] || 'Средняя'
+}
+
+export function severityTone(value: string): string {
+  if (value === 'CRITICAL' || value === 'HIGH') return 'severity--high'
+  if (value === 'LOW') return 'severity--low'
+  return 'severity--medium'
+}
+
+const roleNames: Record<string, string> = {
+  resident: 'Житель',
+  representative: 'Домоуправляющий',
+  uk: 'УК / диспетчер',
+  executor: 'Исполнитель',
+  admin: 'Администратор',
+}
+
+export function roleName(value: string): string {
+  return roleNames[value] || 'Участник'
 }

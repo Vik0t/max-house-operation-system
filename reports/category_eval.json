@@ -1,0 +1,76 @@
+{
+  "source": "dataset.csv; all examples are intent=issue; synthetic/curated, not live resident traffic",
+  "train_rows": 280,
+  "test_rows": 70,
+  "train_chats": 56,
+  "test_chats": 14,
+  "overlapping_chats": 0,
+  "test_support": {
+    "elevator": 20,
+    "heating": 5,
+    "cleaning": 10,
+    "door": 10,
+    "lighting": 10,
+    "water": 5,
+    "parking": 10
+  },
+  "accuracy": 0.9286,
+  "macro_f1": 0.9317,
+  "per_class": {
+    "cleaning": {
+      "precision": 0.8888888888888888,
+      "recall": 0.8,
+      "f1-score": 0.8421052631578947,
+      "support": 10.0
+    },
+    "door": {
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1-score": 0.9,
+      "support": 10.0
+    },
+    "elevator": {
+      "precision": 0.9523809523809523,
+      "recall": 1.0,
+      "f1-score": 0.975609756097561,
+      "support": 20.0
+    },
+    "heating": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 5.0
+    },
+    "lighting": {
+      "precision": 0.8181818181818182,
+      "recall": 0.9,
+      "f1-score": 0.8571428571428571,
+      "support": 10.0
+    },
+    "parking": {
+      "precision": 1.0,
+      "recall": 0.9,
+      "f1-score": 0.9473684210526315,
+      "support": 10.0
+    },
+    "water": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 5.0
+    },
+    "accuracy": 0.9285714285714286,
+    "macro avg": {
+      "precision": 0.9370645227788085,
+      "recall": 0.9285714285714287,
+      "f1-score": 0.9317466139215635,
+      "support": 70.0
+    },
+    "weighted avg": {
+      "precision": 0.930261801690373,
+      "recall": 0.9285714285714286,
+      "f1-score": 0.9282622933640722,
+      "support": 70.0
+    }
+  }
+}

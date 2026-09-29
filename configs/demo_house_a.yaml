@@ -7,6 +7,10 @@ house:
     entrances: 2
     apartments: 160
     year_built: 2018
+    lat: 54.940668
+    lng: 83.201176
+    condition: "Демонстрационный дом"
+    provenance: SYNTHETIC
 zones:
   - id: house-a-common
     type: common
@@ -62,4 +66,3 @@ thresholds:
   recurrence:
     window_days: 90
     count: 3
-

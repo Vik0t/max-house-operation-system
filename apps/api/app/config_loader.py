@@ -83,4 +83,14 @@ def get_house_config(house_id: str) -> HouseConfig:
     for config in load_all_configs():
         if config.house.id == house_id:
             return config
+    if house_id.startswith("koltsovo-"):
+        # Resident-added houses begin with a conservative, manual route. Their
+        # actual assets and management contracts are not inferred as facts.
+        return HouseConfig.model_validate({
+            "house": {"id": house_id, "address": "Кольцово", "region": "Новосибирская область", "management_org": "Не подтверждена"},
+            "zones": [],
+            "assets": [],
+            "routing": {"default": {"destination": "Домоуправляющий", "destination_type": "representative", "action_type": "manual_review", "rationale": "Дом добавлен жителем; ответственная организация и маршрут требуют проверки."}},
+            "thresholds": {"recurrence": {"window_days": 90, "count": 3}},
+        })
     raise KeyError(f"No configuration for house {house_id}")

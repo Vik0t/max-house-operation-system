@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Asset, Issue, Zone
 from ..schemas import ExtractedZone, StructuredExtraction
+from .runtime_model import predict_category, trained_similarity
 
 
 ISSUE_KEYWORDS = {
@@ -89,6 +90,10 @@ def extract_structured(text: str, *, force_failure: bool = False) -> StructuredE
         if any(keyword in lowered for keyword in keywords):
             category = candidate
             break
+    if category == "other" and actionable and intent == "issue":
+        learned = predict_category(lowered)
+        if learned and learned[1] >= 0.78:
+            category = learned[0]
     number_match = re.search(r"(?:подъезд[ае]?|подъезде|подъезда|втор(?:ой|ого)|№)\s*(\d+)", lowered)
     ordinal_map = {"перв": "1", "втор": "2", "трет": "3", "четвер": "4"}
     zone_number = number_match.group(1) if number_match else next(
@@ -152,7 +157,8 @@ def resolve_zone_asset(db: Session, house_id: str, extraction: StructuredExtract
 
 
 def semantic_similarity(left: str, right: str) -> float:
-    return SequenceMatcher(None, left.lower(), right.lower()).ratio()
+    learned = trained_similarity(left, right)
+    return learned if learned is not None else SequenceMatcher(None, left.lower(), right.lower()).ratio()
 
 
 def duplicate_score(existing: Issue, *, house_id: str, zone_id: str | None, asset_id: str | None, category: str, text: str) -> float:

@@ -53,9 +53,13 @@ def make_pipeline(calibrate: bool = True) -> Pipeline:
 
 
 def train_and_eval(train_df: pd.DataFrame, dev_df: pd.DataFrame, test_df: pd.DataFrame,
-                    target_col: str, label: str) -> Pipeline:
+                    target_col: str, label: str) -> Pipeline | None:
     X_train, y_train = train_df["text"], train_df[target_col]
     X_test, y_test = test_df["text"], test_df[target_col]
+
+    if y_train.nunique() < 2:
+        print(f"\n=== {label}: пропущено — в обучении только один класс ({y_train.iloc[0]!r}) ===")
+        return None
 
     pipe = make_pipeline()
     pipe.fit(X_train, y_train)
@@ -110,10 +114,10 @@ def main():
     category_model = train_and_eval(train_df, dev_df, test_df, "category", "Классификатор category")
     zone_type_model = train_and_eval(train_df, dev_df, test_df, "zone_type", "Классификатор zone_type")
 
-    joblib.dump(intent_model, args.out_intent)
-    joblib.dump(category_model, args.out_category)
-    joblib.dump(zone_type_model, args.out_zone_type)
-    print(f"\nМодели сохранены: {args.out_intent}, {args.out_category}, {args.out_zone_type}")
+    for model, path in ((intent_model, args.out_intent), (category_model, args.out_category), (zone_type_model, args.out_zone_type)):
+        if model is not None:
+            joblib.dump(model, path)
+            print(f"Модель сохранена: {path}")
 
     demo_texts = [
         "лифт опять не едет во втором подъезде",
@@ -123,11 +127,15 @@ def main():
         "ну наверное тоже самое, не помню точно где",
     ]
     print("\nПримеры предсказаний")
-    intent_preds = predict_with_confidence(intent_model, demo_texts)
-    category_preds = predict_with_confidence(category_model, demo_texts)
-    zone_preds = predict_with_confidence(zone_type_model, demo_texts)
-    for text, (i, ic), (c, cc), (z, zc) in zip(demo_texts, intent_preds, category_preds, zone_preds):
-        print(f"{text!r:55} -> intent={i} ({ic:.2f}), category={c} ({cc:.2f}), zone_type={z} ({zc:.2f})")
+    for text in demo_texts:
+        predictions = []
+        for label, model in (("intent", intent_model), ("category", category_model), ("zone_type", zone_type_model)):
+            if model is None:
+                predictions.append(f"{label}=не обучен")
+            else:
+                value, confidence = predict_with_confidence(model, [text])[0]
+                predictions.append(f"{label}={value} ({confidence:.2f})")
+        print(f"{text!r:55} -> {', '.join(predictions)}")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
 import asyncio
 import json
 
-from app.bot_worker import CATEGORY_LABELS, PollState, cancel_keyboard, category_keyboard, fallback_keyboard, format_result, format_status, group_ack, handle_callback, handle_message, help_text, initiative_keyboard, is_recognized_result, issue_button_label, issue_keyboard, menu_keyboard, notify_state_changes, zone_keyboard
+from app.bot_worker import CATEGORY_LABELS, PollState, cancel_keyboard, category_keyboard, current_role, fallback_keyboard, format_result, format_status, group_ack, handle_callback, handle_message, help_text, initiative_keyboard, is_recognized_result, issue_button_label, issue_keyboard, menu_keyboard, notify_state_changes, role_denied_text, zone_keyboard
 from app.integrations.max_adapter import MaxAdapterError
-from app.integrations.max_updates import IncomingMaxCallback, parse_incoming_callback, parse_incoming_message, polling_is_active
+from app.integrations.max_updates import IncomingMaxCallback, image_url, parse_incoming_callback, parse_incoming_message, polling_is_active
 
 
 def sample_update(text: str = "лифт опять встал"):
@@ -32,6 +32,16 @@ def test_parse_ignores_non_message_updates():
     assert parse_incoming_message({"update_type": "bot_started"}) is None
     update = sample_update("  ")
     assert parse_incoming_message(update) is None
+
+
+def test_parse_image_only_message_with_real_url():
+    update = sample_update("  ")
+    update["message"]["body"]["attachments"] = [
+        {"type": "image", "payload": {"photos": {"big": {"url": "https://max.example/photo.jpg"}}}}
+    ]
+    message = parse_incoming_message(update)
+    assert message is not None and message.text == "[Фото]"
+    assert image_url(message.attachments) == "https://max.example/photo.jpg"
 
 
 def test_parse_callback_update():
@@ -84,6 +94,17 @@ def test_poll_state_roles_are_per_user_and_persist(tmp_path):
     restored = PollState(str(path), "demo-house-a")
     assert restored.role_for("chat:77", "42") == "uk"
     assert restored.role_for("chat:77", "99") == "resident"
+
+
+def test_assigned_bot_roles_ignore_showcase_selection(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import app.bot_worker as worker
+
+    state = PollState(str(tmp_path / "bot-state.json"), "demo-house-a")
+    state.set_role("chat:77", "42", "uk")
+    monkeypatch.setattr(worker, "get_settings", lambda: SimpleNamespace(bot_role_mode="assigned", role_for_max_user=lambda user_id: "resident"))
+    assert current_role(state, "chat:77", "42") == "resident"
+    assert "назначает организатор" in role_denied_text("uk")
 
 
 def test_bot_response_exposes_real_domain_result():
