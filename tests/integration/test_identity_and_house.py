@@ -65,6 +65,8 @@ def test_public_asset_history_hides_work_photos_and_executor_identity(client, mo
     public = client.get("/assets/house-a-elevator-2/timeline")
     assert public.status_code == 200
     public_works = [event for event in public.json()["events"] if event["type"] == "work_order"]
+    public_issues = [event for event in public.json()["events"] if event["type"] == "issue"]
+    assert public_issues[0]["description"] == "Подробности доступны после входа через MAX."
     assert public_works and public_works[0]["evidence_count"] == 1
     assert public_works[0]["evidence"] == []
     assert "assignee_id" not in public_works[0]
@@ -72,6 +74,17 @@ def test_public_asset_history_hides_work_photos_and_executor_identity(client, mo
     assert private.status_code == 200
     private_works = [event for event in private.json()["events"] if event["type"] == "work_order"]
     assert private_works[0]["evidence"][0]["uri"] == "/demo/elevator-after.svg"
+
+
+def test_public_house_and_issue_cards_hide_freeform_resident_text(client, monkeypatch):
+    monkeypatch.setattr(settings, "auth_mode", "required")
+    monkeypatch.setattr(settings, "internal_api_key", "bot-internal-test")
+    public = client.get("/houses/demo-house-a/state").json()
+    assert public["issues"] and all(item["description"] == "Подробности доступны после входа через MAX." for item in public["issues"])
+    assert client.get("/issues/demo-current-elevator-issue").json()["description"] == "Подробности доступны после входа через MAX."
+    assert all(item["description"] == "Подробности доступны после входа через MAX." for item in client.get("/issues", params={"house_id": "demo-house-a"}).json())
+    private = client.get("/issues/demo-current-elevator-issue", headers={"X-Dompuls-Internal-Key": "bot-internal-test"}).json()
+    assert private["description"] == "Лифт опять встал во втором подъезде."
 
 
 def test_max_status_does_not_report_legacy_dialogs_as_groups(client, monkeypatch, tmp_path):

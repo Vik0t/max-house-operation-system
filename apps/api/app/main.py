@@ -504,6 +504,11 @@ def house_state_issue_cards(
     return cards, history[:20]
 
 
+def public_issue_summary(item: dict[str, Any]) -> dict[str, Any]:
+    """Keep free-form resident text out of pages opened without MAX identity."""
+    return {**item, "description": "Подробности доступны после входа через MAX."}
+
+
 ROLE_LABELS = {
     "resident": "Житель",
     "representative": "Домоуправляющий",
@@ -663,6 +668,9 @@ def house_state(
     confirmation_states = {IssueState.NEEDS_CONFIRMATION.value}
     representative_states = {IssueState.ACTION_READY.value, IssueState.CONFIRMED.value}
     verification_states = {IssueState.DONE_PENDING_VERIFICATION.value}
+    if settings.auth_mode == "required" and viewer_id is None:
+        issue_cards = [public_issue_summary(item) for item in issue_cards]
+        history_issues = [public_issue_summary(item) for item in history_issues]
     return {
         "house": house_dict(house),
         "metrics": {
@@ -1076,18 +1084,20 @@ def resolve_duplicate(signal_id: str, payload: DuplicateResolutionRequest, reque
 
 
 @app.get("/issues")
-def list_issues(house_id: str | None = None, db: Session = Depends(get_db)):
+def list_issues(request: Request, house_id: str | None = None, db: Session = Depends(get_db)):
     query = select(Issue).order_by(Issue.last_seen_at.desc())
     if house_id:
         query = query.where(Issue.house_id == house_id)
-    return [issue_dict(item) for item in db.scalars(query).all()]
+    internal_key = request.headers.get("x-dompuls-internal-key", "")
+    detailed = settings.auth_mode != "required" or bool(settings.internal_api_key and hmac.compare_digest(internal_key, settings.internal_api_key))
+    return [issue_dict(item) if detailed else public_issue_summary(issue_dict(item)) for item in db.scalars(query).all()]
 
 
 @app.get("/issues/{issue_id}")
 def read_issue(issue_id: str, request: Request, db: Session = Depends(get_db)):
     issue = get_issue(db, issue_id)
     if settings.auth_mode == "required" and not request.headers.get("x-max-init-data") and not request.headers.get("x-dompuls-internal-key"):
-        return issue_dict(issue)
+        return public_issue_summary(issue_dict(issue))
     authorize(request, db, house_id=issue.house_id)
     result = issue_dict(issue, detailed=True)
     if issue.state in ACTIVE_ISSUE_STATES:
@@ -1284,7 +1294,7 @@ def asset_timeline(asset_id: str, request: Request, db: Session = Depends(get_db
     issues = db.scalars(select(Issue).where(Issue.asset_id == asset_id).order_by(Issue.first_seen_at.desc())).all()
     events = []
     for issue in issues:
-        events.append({"type": "issue", **issue_dict(issue)})
+        events.append({"type": "issue", **(issue_dict(issue) if detailed else public_issue_summary(issue_dict(issue)))})
         for order in issue.work_orders:
             item = work_order_dict(order)
             if not detailed:
