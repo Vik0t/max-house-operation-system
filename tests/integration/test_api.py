@@ -13,6 +13,19 @@ def test_house_state_can_scope_my_issues_without_exposing_author_ids(client):
     assert all("related_signal_author_ids" not in item for item in state["issues"])
 
 
+def test_resident_can_still_find_own_issue_after_it_closes(client):
+    from app.db import SessionLocal
+    from app.models import Issue
+
+    with SessionLocal() as db:
+        issue = db.get(Issue, "demo-current-elevator-issue")
+        issue.state = "CLOSED"
+        db.commit()
+    state = client.get("/houses/demo-house-a/state", params={"viewer_id": "resident-seed-1"}).json()
+    assert [item["id"] for item in state["my_issues"]] == ["demo-current-elevator-issue"]
+    assert state["my_issues"][0]["state"] == "CLOSED"
+
+
 def test_house_state_exposes_role_specific_task_queue(client):
     resident = client.get("/houses/demo-house-a/state", params={"viewer_id": "resident-seed-1", "role": "resident"}).json()
     representative = client.get("/houses/demo-house-a/state", params={"role": "representative"}).json()

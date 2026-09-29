@@ -65,13 +65,13 @@ export const api = {
       () => localStore.issue(issueId),
     ),
 
-  signal: (houseId: string, text: string, manualZoneId?: string, forceAiFailure = false, photos: string[] = []) =>
+  signal: (houseId: string, text: string, manualZoneId?: string, forceAiFailure = false, photos: string[] = [], authorId = 'resident-demo') =>
     withFallback(
       () => remote<SignalResult>('/signals', {
         method: 'POST',
-        body: JSON.stringify({ house_id: houseId, text, manual_zone_id: manualZoneId, force_ai_failure: forceAiFailure, attachments: photos.map((uri) => ({ type: 'image', uri })) }),
+        body: JSON.stringify({ house_id: houseId, text, author_id: authorId, manual_zone_id: manualZoneId, force_ai_failure: forceAiFailure, attachments: photos.map((uri) => ({ type: 'image', uri })) }),
       }),
-      () => localStore.signal(houseId, text, manualZoneId, forceAiFailure, photos),
+      () => localStore.signal(houseId, text, manualZoneId, forceAiFailure, photos, authorId),
     ),
 
   resolveSignal: (signalId: string, category: string, zoneId: string) => remote<SignalResult>(`/signals/${signalId}/resolve`, { method: 'POST', body: JSON.stringify({ category, zone_id: zoneId }) }),

@@ -6,6 +6,7 @@ import { PhotoInput } from './PhotoInput'
 
 type Props = {
   issue: Issue
+  managementOrg?: string
   role: ViewerRole
   busy: boolean
   readOnly?: boolean
@@ -23,6 +24,17 @@ function formatDate(value: string): string {
     : date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+function routeLabel(destination: string, managementOrg?: string): string {
+  if (/uk|management|управляющ/i.test(destination)) return managementOrg || 'Управляющая организация'
+  if (/representative|домоуправляющ/i.test(destination)) return 'Домоуправляющий'
+  if (/contractor|подряд/i.test(destination)) return 'Подрядная организация'
+  return 'Ответственный по дому'
+}
+
+function signalSourceLabel(sourceType: string): string {
+  return ['max_message', 'max_webapp', 'bot_dialog'].includes(sourceType) ? 'MAX' : 'Приложение'
+}
+
 function nextAction(issue: Issue, role: ViewerRole): { action: string; label: string } | null {
   const order = issue.work_orders?.at(-1)
   // Only an order that is still being worked on offers executor actions.
@@ -38,7 +50,7 @@ function nextAction(issue: Issue, role: ViewerRole): { action: string; label: st
   return null
 }
 
-export function IssuePanel({ issue, role, busy, readOnly, onAction, onComment, onClose, onShare, onOpenRelated }: Props) {
+export function IssuePanel({ issue, managementOrg, role, busy, readOnly, onAction, onComment, onClose, onShare, onOpenRelated }: Props) {
   const next = readOnly ? null : nextAction(issue, role)
   const order = issue.work_orders?.at(-1)
   const freshEvidence = Boolean(order?.started_at && order.evidence.some((item) => new Date(item.created_at).getTime() >= new Date(order.started_at!).getTime()))
@@ -51,9 +63,7 @@ export function IssuePanel({ issue, role, busy, readOnly, onAction, onComment, o
     <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="issue-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="drawer-close" onClick={onClose} aria-label="Закрыть карточку">×</button>
-        <p className="eyebrow">
-          Проблема · {role === 'resident' ? 'ваше обращение' : 'ваша рабочая задача'}
-        </p>
+        <p className="eyebrow">{role === 'resident' ? 'Обращение жителей' : 'Рабочая задача'}</p>
         <h2 id="issue-title">{issueTitle(issue)}</h2>
         <div className="drawer-badges">
           <StatusBadge value={issue.state} />
@@ -97,7 +107,7 @@ export function IssuePanel({ issue, role, busy, readOnly, onAction, onComment, o
             <div className="flex-col gap-m">
               {issue.signals.map((signal) => (
                 <div className="source-signal" key={signal.id}>
-                  <span>{signal.source_type === 'max_message' ? 'MAX' : 'WEB'} · житель</span>
+                  <span>{signalSourceLabel(signal.source_type)} · житель</span>
                   <strong>{signal.text}</strong>
                 </div>
               ))}
@@ -108,7 +118,7 @@ export function IssuePanel({ issue, role, busy, readOnly, onAction, onComment, o
         {issue.actions?.at(-1) ? (
           <div className="drawer-block">
             <p className="eyebrow" style={{ marginBottom: 'var(--spacing-m)' }}>Рекомендованный маршрут</p>
-            <span className="drawer-action-label">{issue.actions.at(-1)?.suggested_destination}</span>
+            <span className="drawer-action-label">{routeLabel(issue.actions.at(-1)!.suggested_destination, managementOrg)}</span>
             <p style={{ fontSize: 'var(--fs-description)', color: 'var(--text-secondary)', marginTop: 'var(--spacing-xs)' }}>{issue.actions.at(-1)?.rationale}</p>
           </div>
         ) : null}
@@ -133,7 +143,7 @@ export function IssuePanel({ issue, role, busy, readOnly, onAction, onComment, o
           <div className="drawer-block">
             <p className="eyebrow" style={{ marginBottom: 'var(--spacing-m)' }}>Работа</p>
             <div className="drawer-work-order">
-              <span className="drawer-action-label">{order.assignee_id}</span>
+              <span className="drawer-action-label">Назначенный исполнитель</span>
               <StatusBadge value={order.status} />
             </div>
             <p style={{ fontSize: 'var(--fs-description)', color: 'var(--text-secondary)' }}>{order.title}</p>

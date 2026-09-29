@@ -590,6 +590,13 @@ def house_state(
         if viewer_id
         else []
     )
+    if viewer_id:
+        my_issue_cards.extend(
+            issue_dict(item)
+            for item in issues
+            if item.state not in ACTIVE_ISSUE_STATES and any(signal.author_id == viewer_id for signal in item.signals)
+        )
+        my_issue_cards.sort(key=lambda item: item.get("last_seen_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     for card in issue_cards:
         card.pop("related_signal_author_ids", None)
     # Compact cards carry work-order status so the queue does not offer a

@@ -77,7 +77,7 @@ export default function App() {
   const [houseId, setHouseId] = useState('demo-house-a')
   const [role, setRole] = useState<ViewerRole>(() => roleFromQuery())
   const [maxIdentity, setMaxIdentity] = useState<{ user_id: string; role: ViewerRole; selected_house_id: string | null; verified_resident: boolean } | null>(null)
-  const viewerId = maxIdentity?.user_id || ((import.meta.env.DEV || new URLSearchParams(window.location.search).get('local') === 'true' || remoteDemo) ? 'resident-demo' : 'guest')
+  const viewerId = maxIdentity?.user_id || ((import.meta.env.DEV || new URLSearchParams(window.location.search).get('local') === 'true' || remoteDemo) ? 'resident-seed-1' : 'guest')
   const localDemo = import.meta.env.DEV || new URLSearchParams(window.location.search).get('local') === 'true'
   const canSelectHouse = Boolean(maxIdentity || localDemo || remoteDemo)
   const canWrite = Boolean(localDemo || remoteDemo || (maxIdentity?.selected_house_id && maxIdentity.selected_house_id === houseId))
@@ -139,7 +139,7 @@ export default function App() {
   useEffect(() => { if (!launchContext.initData && !localDemo && !remoteDemo) return; try { if (!window.localStorage.getItem('dompuls-tour-v1')) setTourOpen(true) } catch { /* ignore */ } }, [launchContext.initData, localDemo, remoteDemo])
 
   async function perform(task: () => Promise<void>) { setBusy(true); setError(null); try { await task() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось выполнить действие') } finally { setBusy(false) } }
-  function submitSignal(forceAiFailure = false) { void perform(async () => { const result = await api.signal(houseId, message, undefined, forceAiFailure, photos); setFallback(result.fallback); setPendingSignalId(result.signal?.id || null); setFallbackCategory(result.classification?.category || result.issue?.category || result.fallback?.candidate?.category || 'other'); if (result.issue) setIssue(await api.issue(result.issue.id)); if (!result.fallback) { setMessage(''); setPhotos([]); setShowReport(false) } await refresh() }) }
+  function submitSignal(forceAiFailure = false) { void perform(async () => { const result = await api.signal(houseId, message, undefined, forceAiFailure, photos, String(viewerId)); setFallback(result.fallback); setPendingSignalId(result.signal?.id || null); setFallbackCategory(result.classification?.category || result.issue?.category || result.fallback?.candidate?.category || 'other'); if (result.issue) setIssue(await api.issue(result.issue.id)); if (!result.fallback) { setMessage(''); setPhotos([]); setShowReport(false) } await refresh() }) }
   function resolveZone(zoneId: string) { if (!pendingSignalId) return; void perform(async () => { const result = await api.resolveSignal(pendingSignalId, fallbackCategory, zoneId); setFallback(undefined); setPendingSignalId(null); if (result.issue) setIssue(await api.issue(result.issue.id)); setMessage(''); setPhotos([]); setShowReport(false); await refresh() }) }
   function resolveCandidate(decision: 'LINK' | 'CREATE_NEW') { if (!pendingSignalId || !fallback?.candidate) return; void perform(async () => { const next = await api.resolveDuplicate(pendingSignalId, fallback.candidate!.id, decision); setIssue(await api.issue(next.id)); setFallback(undefined); setPendingSignalId(null); setMessage(''); setPhotos([]); setShowReport(false); await refresh() }) }
   function runIssueAction(action: string, evidence?: { uri: string; comment: string }) {
@@ -348,6 +348,22 @@ export default function App() {
           {tasks.slice(0, 6).map((item) => <TaskCard key={item.id} issue={item} onOpen={() => openIssue(item.id)} />)}
         </div>}
       </section>
+
+      {state?.my_issues?.length ? <section className="section">
+        <div className="section-header">
+          <span className="section-header-label">Мои обращения</span>
+          <span className="section-header-count">{state.my_issues.length}</span>
+        </div>
+        <div className="cell-list">
+          {state.my_issues.slice(0, 8).map((item) => <button className="cell-simple" key={item.id} onClick={() => openIssue(item.id)}>
+            <div className="cell-content">
+              <span className="cell-title">{item.title}</span>
+              <span className="cell-subtitle">{item.asset_name || item.zone_name || 'Место уточняется'}</span>
+            </div>
+            <div className="cell-after"><StatusBadge value={item.state} /></div>
+          </button>)}
+        </div>
+      </section> : null}
 
       {/* ─── REPORT BUTTON ────────────────────────────────────────────── */}
       {role === 'resident' ? <section className="section report-cta" data-tour="report" style={{ paddingTop: 0 }}>
@@ -666,7 +682,7 @@ export default function App() {
     <div className="bottom-spacer"></div>
 
     {/* ─── ISSUE PANEL (drawer) ────────────────────────────────────── */}
-    {issue ? <IssuePanel issue={issue} role={role} busy={busy} readOnly={!canWrite} onAction={runIssueAction} onComment={(text, commentPhotos) => void perform(async () => { setIssue(await api.comment(issue.id, text, role, String(viewerId), commentPhotos)); await refresh() })} onClose={() => setIssue(null)} onShare={shareCurrentIssue} onOpenRelated={openIssue} /> : null}
+    {issue ? <IssuePanel issue={issue} managementOrg={state?.house.management_org} role={role} busy={busy} readOnly={!canWrite} onAction={runIssueAction} onComment={(text, commentPhotos) => void perform(async () => { setIssue(await api.comment(issue.id, text, role, String(viewerId), commentPhotos)); await refresh() })} onClose={() => setIssue(null)} onShare={shareCurrentIssue} onOpenRelated={openIssue} /> : null}
 
     {/* ─── TIMELINE DRAWER ────────────────────────────────────────── */}
     {timeline ? <div className="drawer-backdrop" role="presentation" onMouseDown={() => setTimeline(null)}>

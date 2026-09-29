@@ -120,7 +120,7 @@ Suite покрывает:
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон внутри deployment-образа API и MAX-бота: `100 passed`; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон: `101 passed`, включая 20 последовательных прогонов основного сценария; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 
@@ -179,3 +179,4 @@ Security notes: [docs/security.md](docs/security.md).
 - [Evidence registry](docs/evidence_registry.md)
 - [Security](docs/security.md)
 - [Production deployment](docs/deployment.md)
+- [Презентация для жюри (PDF)](submission/DomPuls_MAX_hackathon.pdf) · [редактируемый PPTX](submission/DomPuls_MAX_hackathon.pptx)

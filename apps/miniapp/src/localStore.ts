@@ -485,6 +485,9 @@ export const localStore = {
     const archiveStates = ['CLOSED', 'VERIFIED', 'DECLINED']
     const closedIssues = allIssues.filter((i) => archiveStates.includes(i.state))
     const openIssues = allIssues.filter((i) => !archiveStates.includes(i.state))
+    const ownedRows = viewerId ? exec('SELECT DISTINCT issue_id FROM signals WHERE author_id=? AND issue_id IS NOT NULL', [String(viewerId)]) : []
+    const ownedIds = new Set((ownedRows[0]?.values || []).map((row) => String(row[0])))
+    const my_issues = allIssues.filter((item) => ownedIds.has(item.id))
 
     let my_tasks: HouseState['my_tasks'] = []
     if (role === 'resident') my_tasks = openIssues.map((i) => ({ ...i, next_action: { id: 'open', label: i.state === 'DONE_PENDING_VERIFICATION' ? 'Проверить результат' : 'Открыть' } }))
@@ -496,7 +499,7 @@ export const localStore = {
     return {
       house, assets,
       metrics: { active_issues: openIssues.length, work_in_progress: openIssues.filter((i) => i.state === 'WORK_IN_PROGRESS').length, awaiting_confirmation: openIssues.filter((i) => i.state === 'NEEDS_CONFIRMATION').length, submitted_to_management: openIssues.filter((i) => i.state === 'SUBMITTED').length, awaiting_verification: openIssues.filter((i) => i.state === 'DONE_PENDING_VERIFICATION').length, recurring_issues: openIssues.filter((i) => i.recurrence_count >= 2).length, initiatives: initiatives.length },
-      issues: openIssues, my_tasks, history_issues: closedIssues, initiatives, recent_signals,
+      issues: openIssues, my_issues, my_tasks, history_issues: closedIssues, initiatives, recent_signals,
       integration: { max: 'SIMULATED', external_submission: 'SIMULATED' },
     }
   },
@@ -510,12 +513,12 @@ export const localStore = {
     return rowToIssue(row)
   },
 
-  async signal(houseId: string, text: string, _manualZoneId?: string, forceAiFailure = false, photos: string[] = []): Promise<SignalResult> {
+  async signal(houseId: string, text: string, _manualZoneId?: string, forceAiFailure = false, photos: string[] = [], authorId = 'web-user'): Promise<SignalResult> {
     await init()
     if (forceAiFailure) return { fallback: { type: 'CLARIFICATION_NEEDED', message: 'Не удалось определить объект. Уточните:', choices: [{ id: 'elevator', name: 'Лифт' }, { id: 'lighting', name: 'Освещение' }, { id: 'water', name: 'Водоснабжение' }, { id: 'other', name: 'Другое' }] } }
     const id = `issue-${Date.now()}`, sigId = `sig-${Date.now()}`
     runSql('INSERT INTO issues (id,house_id,category,title,description,severity,state,confirmations_count,recurrence_count,provenance,first_seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [id, houseId, 'other', text.slice(0, 60), text, 'MEDIUM', 'NEEDS_CONFIRMATION', 1, 0, 'USER', now()])
-    runSql('INSERT INTO signals (id,issue_id,author_id,source_type,text,attachments,provenance,created_at,status) VALUES (?,?,?,?,?,?,?,?,?)', [sigId, id, 'web-user', 'web', text, '[]', 'USER', now(), 'CLUSTERED'])
+    runSql('INSERT INTO signals (id,issue_id,author_id,source_type,text,attachments,provenance,created_at,status) VALUES (?,?,?,?,?,?,?,?,?)', [sigId, id, authorId, 'web', text, '[]', 'USER', now(), 'CLUSTERED'])
     photos.forEach((data, index) => runSql('INSERT INTO photos (id,issue_id,comment_id,data,created_at) VALUES (?,?,?,?,?)', [`ph-${Date.now()}-${index}`, id, null, data, now()]))
     return { signal: { id: sigId }, issue: await localStore.issue(id) }
   },
