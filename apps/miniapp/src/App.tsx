@@ -492,7 +492,11 @@ export default function App() {
           <p>{mapPreview.condition || 'Характеристики дома не указаны'}</p>
           <p>Управляющая организация: {mapPreview.management_org || 'не подтверждена'}</p>
           <p className="disclosure">Данные справочника требуют проверки. {houses.some((item) => item.id === mapPreview.id) ? 'Дом подключён к ДомПульсу.' : 'Карточка дома будет создана при выборе.'}</p>
-          <button className="max-btn max-btn--primary" disabled={busy || (!canSelectHouse && !houses.some((item) => item.id === mapPreview.id))} onClick={() => selectHouse(mapPreview)}>{houses.some((item) => item.id === mapPreview.id) ? 'Открыть этот дом' : canSelectHouse ? 'Выбрать и подключить дом' : 'Подключить дом через MAX'}</button>
+          {canSelectHouse || houses.some((item) => item.id === mapPreview.id) ? (
+            <button className="max-btn max-btn--primary" disabled={busy} onClick={() => selectHouse(mapPreview)}>{houses.some((item) => item.id === mapPreview.id) ? 'Открыть этот дом' : 'Выбрать и подключить дом'}</button>
+          ) : (
+            <a className="max-btn max-btn--primary public-entry-link" href="https://max.ru/t312_hakaton_max_bot?startapp" target="_blank" rel="noopener noreferrer">Открыть в MAX и подключить дом</a>
+          )}
         </div> : null}
         <div className="house-form">
           <input className="house-input" value={houseDraft.address} onChange={(event) => setHouseDraft((draft) => ({ ...draft, address: event.target.value }))} placeholder="Адрес: Никольский проспект, 1" />
@@ -504,7 +508,11 @@ export default function App() {
           </div>
           <div className="house-form-row">
             <button className="max-btn max-btn--secondary" onClick={() => void geocodeAddress()}>Найти адрес</button>
-            <button className="max-btn max-btn--primary" disabled={busy || resolvingAddress || !canSelectHouse || !houseDraft.address.trim() || houseDraft.lat == null || houseDraft.lng == null} onClick={saveHouse}>Добавить дом</button>
+            {canSelectHouse ? (
+              <button className="max-btn max-btn--primary" disabled={busy || resolvingAddress || !houseDraft.address.trim() || houseDraft.lat == null || houseDraft.lng == null} onClick={saveHouse}>Добавить дом</button>
+            ) : (
+              <a className="max-btn max-btn--primary public-entry-link" href="https://max.ru/t312_hakaton_max_bot?startapp" target="_blank" rel="noopener noreferrer">Добавить дом через MAX</a>
+            )}
           </div>
         </div>
         <input className="house-input" aria-label="Поиск дома по адресу" value={houseSearch} onChange={(event) => setHouseSearch(event.target.value)} placeholder="Найти дом по адресу" style={{ marginTop: 'var(--spacing-xl)', width: '100%' }} />
