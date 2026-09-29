@@ -58,7 +58,7 @@ write_scenarios:
     method: POST
     path: /signals
     role: resident
-    expected_status: 200
+    expected_status: 201
     response_format: JSON
     notes: Не запускайте на общем production доме без согласования; создаёт запись.
   - name: Голосование по инициативе

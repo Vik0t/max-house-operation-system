@@ -6,15 +6,28 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const forcedLocal = new URLSearchParams(window.location.search).get('local') === 'true'
 
 async function remote<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(getMaxLaunchContext().initData ? { 'X-Max-Init-Data': getMaxLaunchContext().initData } : {}), ...options?.headers },
-  })
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({ detail: 'Сервис временно недоступен' }))
-    throw new Error(body.detail || `HTTP ${response.status}`)
+  const controller = new AbortController()
+  const isRead = !options?.method || options.method.toUpperCase() === 'GET'
+  const timeout = window.setTimeout(() => controller.abort(), isRead ? 45_000 : 120_000)
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(getMaxLaunchContext().initData ? { 'X-Max-Init-Data': getMaxLaunchContext().initData } : {}), ...options?.headers },
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ detail: 'Сервис временно недоступен' }))
+      throw new Error(body.detail || `HTTP ${response.status}`)
+    }
+    return await response.json() as T
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(isRead
+      ? 'Сервер отвечает слишком долго. Нажмите «Повторить».'
+      : 'Ответ задержался. Сначала проверьте статус обращения, прежде чем повторять действие.')
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
   }
-  return response.json() as Promise<T>
 }
 
 // Local demo is explicit (?local=true); production failures must stay visible.

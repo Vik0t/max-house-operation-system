@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, sta
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .ai.pipeline import AIPipelineUnavailable, extract_structured, resolve_zone_asset
 from .config_loader import get_house_config
@@ -392,12 +392,16 @@ def read_house(house_id: str, db: Session = Depends(get_db)):
 
 def operational_state(db: Session, asset: Asset) -> str:
     issues = db.scalars(select(Issue).where(Issue.asset_id == asset.id)).all()
+    return operational_state_from_issues(issues, get_house_config(asset.house_id).recurrence.count)
+
+
+def operational_state_from_issues(issues: list[Issue], recurrence_threshold: int) -> str:
     states = {IssueState(item.state) for item in issues}
     if IssueState.WORK_IN_PROGRESS in states:
         return "WORK_IN_PROGRESS"
     if IssueState.DONE_PENDING_VERIFICATION in states:
         return "VERIFICATION"
-    if any(item.recurrence_count >= get_house_config(asset.house_id).recurrence.count and item.state != IssueState.CLOSED.value for item in issues):
+    if any(item.recurrence_count >= recurrence_threshold and item.state != IssueState.CLOSED.value for item in issues):
         return "RECURRING"
     if any(state not in {IssueState.CLOSED, IssueState.CANCELLED, IssueState.REJECTED, IssueState.DUPLICATE} for state in states):
         return "ACTIVE_ISSUE"
@@ -572,7 +576,11 @@ def house_state(
                     viewer_id, role = None, "resident"
             else:
                 viewer_id, role = None, "resident"
-    issues = db.scalars(select(Issue).where(Issue.house_id == house_id)).all()
+    issues = db.scalars(
+        select(Issue)
+        .where(Issue.house_id == house_id)
+        .options(selectinload(Issue.asset), selectinload(Issue.signals), selectinload(Issue.work_orders))
+    ).all()
     assets = db.scalars(select(Asset).where(Asset.house_id == house_id)).all()
     zones = db.scalars(select(Zone).where(Zone.house_id == house_id)).all()
     initiatives = db.scalars(select(Initiative).where(Initiative.house_id == house_id, Initiative.state != InitiativeState.CLOSED.value)).all()
@@ -593,6 +601,10 @@ def house_state(
         if action:
             my_tasks.append({**card, "next_action": action})
     threshold = get_house_config(house_id).recurrence.count
+    issues_by_asset: dict[str, list[Issue]] = {}
+    for item in issues:
+        if item.asset_id:
+            issues_by_asset.setdefault(item.asset_id, []).append(item)
     recent_signals = db.scalars(
         select(Signal).where(Signal.house_id == house_id).order_by(Signal.created_at.desc()).limit(40)
     ).all()
@@ -635,7 +647,7 @@ def house_state(
             "recurring_issues": sum(item.get("recurrence_count", 0) >= threshold for item in issue_cards),
             "initiatives": len(initiatives),
         },
-        "assets": [asset_dict(item, operational_state(db, item)) for item in assets],
+        "assets": [asset_dict(item, operational_state_from_issues(issues_by_asset.get(item.id, []), threshold)) for item in assets],
         "zones": [zone_dict(item) for item in zones],
         "issues": issue_cards,
         "my_issues": my_issue_cards,

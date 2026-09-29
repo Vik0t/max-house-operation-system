@@ -91,6 +91,7 @@ export default function App() {
   const [fallback, setFallback] = useState<SignalResult['fallback']>()
   const [timeline, setTimeline] = useState<{ name: string; events: Array<Record<string, unknown>> } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [overviewLoading, setOverviewLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
   const [showDemo, setShowDemo] = useState(false)
@@ -104,8 +105,35 @@ export default function App() {
   const [houseSearch, setHouseSearch] = useState('')
 
   const refresh = useCallback(async () => { setState(await api.state(houseId, viewerId, role)) }, [houseId, role, viewerId])
-  useEffect(() => { Promise.all([api.houses(), api.state(houseId, viewerId, role)]).then(([houseList, houseState]) => { setHouses(houseList); setState(houseState) }).catch((reason: Error) => setError(reason.message)) }, [houseId, role, viewerId])
-  useEffect(() => { const timer = window.setInterval(() => { void refresh().catch(() => undefined); if (issue?.id) void api.issue(issue.id).then(setIssue).catch(() => undefined) }, 7_000); return () => window.clearInterval(timer) }, [issue?.id, refresh])
+  const loadOverview = useCallback(async () => {
+    setOverviewLoading(true)
+    setError(null)
+    try {
+      const [houseList, houseState] = await Promise.all([api.houses(), api.state(houseId, viewerId, role)])
+      setHouses(houseList)
+      setState(houseState)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось загрузить дом')
+    } finally {
+      setOverviewLoading(false)
+    }
+  }, [houseId, role, viewerId])
+  useEffect(() => { void loadOverview() }, [loadOverview])
+  useEffect(() => {
+    let stopped = false
+    let timer = 0
+    const tick = async () => {
+      if (!stopped && document.visibilityState === 'visible') {
+        try {
+          await refresh()
+          if (issue?.id) setIssue(await api.issue(issue.id))
+        } catch { /* Keep the last loaded state; the next cycle retries. */ }
+      }
+      if (!stopped) timer = window.setTimeout(() => void tick(), 30_000)
+    }
+    timer = window.setTimeout(() => void tick(), 60_000)
+    return () => { stopped = true; window.clearTimeout(timer) }
+  }, [issue?.id, refresh])
   useEffect(() => { if (!launchContext.initData) return; Promise.all([api.validateMaxContext(launchContext.initData), api.identity(launchContext.initData)]).then(([context, identity]) => { setMaxUserName(context.user?.first_name || null); setMaxIdentity(identity); setRole(identity.role); if (identity.selected_house_id) setHouseId(identity.selected_house_id) }).catch(() => setError('Не удалось подтвердить запуск в MAX. Откройте приложение из сообщения бота ещё раз.')) }, [launchContext.initData])
   useEffect(() => { if (!launchContext.issueId) return; api.issue(launchContext.issueId).then(setIssue).catch(() => undefined) }, [launchContext.issueId])
   useEffect(() => { if (!launchContext.initData && !localDemo && !remoteDemo) return; try { if (!window.localStorage.getItem('dompuls-tour-v1')) setTourOpen(true) } catch { /* ignore */ } }, [launchContext.initData, localDemo, remoteDemo])
@@ -293,7 +321,8 @@ export default function App() {
 
     {/* ─── ERROR (conditional) ──────────────────────────────────────── */}
     {error ? <div className="error-banner" role="alert">
-      <b>Не удалось выполнить действие.</b> {error}
+      <b>{state ? 'Не удалось выполнить действие.' : 'Не удалось загрузить дом.'}</b> {error}
+      {!state ? <button className="max-btn max-btn--secondary" disabled={overviewLoading} onClick={() => void loadOverview()}>{overviewLoading ? 'Пробуем снова…' : 'Повторить'}</button> : null}
       <button className="error-banner-close" aria-label="Закрыть" onClick={() => setError(null)}>×</button>
     </div> : null}
     {!canSelectHouse ? <div className="disclosure" role="status">Просмотр без входа. Чтобы выбрать свой дом и отправить обращение, откройте приложение из MAX. Действия здесь не сохраняются локально.</div> : null}
