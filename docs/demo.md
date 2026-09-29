@@ -9,7 +9,7 @@ docker compose up --build -d
 curl http://localhost:8000/health
 ```
 
-Open <http://localhost:3000/?demo=true>. The first screen is a role-specific task queue. `?demo=true` works only in the local Docker build; the public GitHub Pages build requires signed MAX identity for write actions. Bot role selection is temporarily enabled by `BOT_ROLE_MODE=showcase`; set `BOT_ROLE_MODE=assigned` and MAX-ID allowlists before real operation. Keep `/docs` in a second tab as architecture proof.
+Open <http://localhost:3000/?demo=true>. The first screen is the resident's task queue and `Мои обращения`; `Дом` shows the state of the selected house. `?demo=true` works only in the local Docker build; the public GitHub Pages build requires signed MAX identity for write actions. Bot role selection is temporarily enabled by `BOT_ROLE_MODE=showcase`; set `BOT_ROLE_MODE=assigned` and MAX-ID allowlists before real operation. Keep `/docs` in a second tab as architecture proof.
 
 For the real MAX demo, open the configured bot, send `/start`, choose a role, then send the lift messages there. Watch `docker compose logs -f bot`; the same Issue will appear in the mini-app. Use `Сменить дом` or `/дом_b` to demonstrate config-driven switching from the bot.
 
@@ -17,7 +17,7 @@ For the real MAX demo, open the configured bot, send `/start`, choose a role, th
 
 ### 0:00–0:40 — Role-specific task queue
 
-Start as `Житель`, then switch to `Домоуправляющий`, `УК / диспетчер` and `Исполнитель`. The heading, task queue and next action change for each role. A resident never sees assignment or executor controls.
+Start as `Житель`, then switch to `Домоуправляющий`, `УК / диспетчер` and `Исполнитель`. The heading, task queue and next action change for each role. A resident never sees assignment or executor controls. `Мои обращения` stays in `Задачи` even after a problem is closed; `Дом` shows the shared asset history.
 
 ### 0:40–1:10 — House memory
 
@@ -46,7 +46,7 @@ Show that передача помечена как демонстрационн�
 
 ### 3:00–3:35 — Community initiative
 
-In the house group send «На парковке нужен второй фонарь». The bot publishes one informal poll card in that group. Vote from two different MAX accounts and show the count update in place. Then, as the representative, open the initiative in the bot or mini-app and press `Зафиксировать результат`. Show `FORMAL HANDOFF REQUIRED` and the notice that the poll is not a legal ОСС.
+If a MAX house group is registered and its `read_all_messages` permission is verified, send «На парковке нужен второй фонарь» there. The bot publishes one informal poll card in that group. Vote from two different MAX accounts and show the count update in place. Then, as the representative, open the initiative in the bot or mini-app and press `Зафиксировать результат`. Show the marker that a formal handoff is required and the notice that the poll is not a legal ОСС. Until a real group is connected, demonstrate this flow in the bot's personal dialog and do not call the group integration live-tested.
 
 ### 3:35–3:55 — Scale proof
 

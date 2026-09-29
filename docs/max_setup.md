@@ -60,7 +60,7 @@ Supported commands:
 
 Мини‑приложение проверяет `initData` на API и сохраняет выбранный дом по MAX ID. Это удобная идентификация аккаунта, **не доказательство проживания**. Публичная страница вне MAX — для просмотра; write‑действия закрыты. При `AUTH_MODE=required` запросы бота к API идут через `INTERNAL_API_KEY`.
 
-The mini-app refreshes House State every five seconds, so a Signal received from MAX becomes visible without reloading the page.
+The mini-app refreshes House State automatically without overlapping requests, so a Signal received from MAX becomes visible without reloading the page. On a slow network, a retry button appears after an unsuccessful first load.
 
 ## Webhook subscription
 
