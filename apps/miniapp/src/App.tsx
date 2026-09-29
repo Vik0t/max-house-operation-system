@@ -525,7 +525,7 @@ export default function App() {
           <span className="section-header-count">{state.initiatives.length}</span>
         </div>
         <div className="initiative-grid">
-          {state.initiatives.map((initiative) => <InitiativeCard key={initiative.id} initiative={initiative} busy={busy} onVote={(option) => void perform(async () => { await api.vote(initiative.id, String(viewerId), option); await refresh() })} onHandoff={() => void perform(async () => { await api.handoff(initiative.id); await refresh() })} />)}
+          {state.initiatives.map((initiative) => <InitiativeCard key={initiative.id} initiative={initiative} busy={busy} canVote={Boolean(canWrite && ['resident', 'representative'].includes(role))} canHandoff={Boolean(canWrite && role === 'representative')} onVote={(option) => void perform(async () => { await api.vote(initiative.id, String(viewerId), option); await refresh() })} onHandoff={() => void perform(async () => { await api.handoff(initiative.id); await refresh() })} />)}
         </div>
       </section> : <section className="section">
         <div className="empty-state">
