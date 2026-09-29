@@ -12,7 +12,7 @@ export function pluralRu(count: number, one: string, few: string, many: string):
 const categoryLabels: Record<string, string> = {
   elevator: 'Лифт',
   lighting: 'Освещение',
-  water: 'Вода и отопление',
+  water: 'Водоснабжение',
   heating: 'Отопление',
   door: 'Дверь и домофон',
   cleaning: 'Уборка',

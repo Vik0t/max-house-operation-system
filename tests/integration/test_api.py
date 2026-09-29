@@ -196,6 +196,7 @@ def test_manual_resolution_reuses_original_signal(client):
     assert body["resolved_manually"] is True
     assert body["issue"]["signals"][0]["id"] == signal_id
     assert body["issue"]["zone_id"] == "house-a-entrance-1"
+    assert body["issue"]["provenance"] == "USER"
 
 
 def test_asset_resolution_does_not_cross_category_boundaries(client):

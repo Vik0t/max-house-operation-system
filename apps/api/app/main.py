@@ -1019,6 +1019,7 @@ def resolve_signal(signal_id: str, payload: ManualResolveRequest, request: Reque
         description=signal.text,
         severity="high" if recurrence > 1 else "medium",
         recurrence_count=recurrence,
+        provenance="USER",
         signals=[signal],
         confirmations_count=1,
     )
