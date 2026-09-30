@@ -37,14 +37,20 @@ declare global {
 
 export function getMaxLaunchContext() {
   const webApp = window.WebApp
+  // MAX also puts the signed data in the URL fragment. The Bridge may become
+  // available after React's first render (notably in some mobile webviews),
+  // so read both sources every time instead of caching an empty first value.
+  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const initData = webApp?.initData || fragment.get('WebAppData') || ''
+  const signedParams = new URLSearchParams(initData)
   const queryIssue = new URLSearchParams(window.location.search).get('issue')
-  const startParam = webApp?.initDataUnsafe?.start_param
+  const startParam = webApp?.initDataUnsafe?.start_param || fragment.get('WebAppStartParam') || signedParams.get('start_param') || undefined
   const startIssue = startParam?.startsWith('issue_') ? startParam.slice('issue_'.length) : undefined
   return {
-    available: Boolean(webApp?.initData),
-    initData: webApp?.initData || '',
+    available: Boolean(initData),
+    initData,
     unsafe: webApp?.initDataUnsafe,
-    platform: webApp?.platform,
+    platform: webApp?.platform || fragment.get('WebAppPlatform') || undefined,
     version: webApp?.version,
     issueId: queryIssue || startIssue,
   }

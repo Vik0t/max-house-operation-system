@@ -142,8 +142,8 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
 
         {issue.submissions?.at(-1) ? (
           <div className="drawer-honesty">
-            <b>ДЕМО</b>
-            Передача в УК показана через демонстрационный канал, не как официальная отправка.
+            <b>Тестовый канал передачи</b>
+            Обращение видно сотруднику УК в ДомПульсе. Официальная отправка в систему УК пока не подключена.
           </div>
         ) : null}
 
@@ -210,7 +210,7 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
             <h3>Проблема устранена?</h3>
             <div className="btn-row">
               <button className="max-btn max-btn--primary" disabled={busy} onClick={() => onAction('verify-yes')}>Да, работает</button>
-              <button className="max-btn max-btn--secondary" disabled={busy} onClick={() => onAction('verify-no')}>Нет, переоткрыть</button>
+              <button className="max-btn max-btn--secondary" disabled={busy} onClick={() => onAction('verify-no')}>Нет, вернуть на доработку</button>
             </div>
           </div>
         ) : null}

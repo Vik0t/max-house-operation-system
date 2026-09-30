@@ -24,11 +24,9 @@ const roles: Array<{ id: ViewerRole; label: string; intro: string }> = [
   { id: 'uk', label: 'УК / диспетчер', intro: 'Принять обращение и организовать работу' },
   { id: 'executor', label: 'Исполнитель', intro: 'Выполнить назначенную работу и приложить фото' },
 ]
-const demoMessages = ['лифт опять встал, второй подъезд', 'на парковке нужен второй фонарь', 'протечка в подвале']
-
 const tourSteps: TourStep[] = [
   { title: 'Привет, я Макс!', body: 'Я голубь и помогу разобраться в ЖКХ. За минуту покажу, как всё устроено.', mascot: mascot.hero },
-  { tab: 'tasks', target: '[data-tour="role"]', title: 'Ваша роль', body: 'В MAX роль определяется вашим доступом. В отдельном демо-режиме можно посмотреть путь других участников.', mascot: mascot.tip },
+  { tab: 'tasks', target: '[data-tour="role"]', title: 'Ваша роль', body: 'Житель сообщает и проверяет результат. Рабочие действия домоуправляющего, УК и исполнителя доступны только назначенным участникам.', mascot: mascot.tip },
   { tab: 'tasks', target: '[data-tour="tasks"]', title: 'Задачи по дому', body: 'Здесь то, что требует внимания: подтвердить проблему, передать в УК или проверить результат.', mascot: mascot.tip },
   { tab: 'tasks', target: '[data-tour="report"]', title: 'Сообщить о проблеме', body: 'Опишите проблему словами — система определит объект и подскажет следующий шаг.', mascot: mascot.report },
   { tab: 'house', target: '[data-tour="house"]', title: 'Раздел «Дом»', body: 'Сводка и состояние дома: активные проблемы, работа, повторяющиеся случаи, инициативы.', mascot: mascot.calm },
@@ -73,7 +71,10 @@ type NavTab = 'tasks' | 'house' | 'initiatives' | 'archive' | 'more'
 
 export default function App() {
   const remoteDemo = import.meta.env.VITE_ALLOW_REMOTE_DEMO === 'true' && new URLSearchParams(window.location.search).get('demo') === 'true'
-  const [launchContext] = useState(() => getMaxLaunchContext())
+  const [launchContext, setLaunchContext] = useState(() => getMaxLaunchContext())
+  const [bridgeSettled, setBridgeSettled] = useState(Boolean(launchContext.initData))
+  const [authError, setAuthError] = useState(false)
+  const [authAttempt, setAuthAttempt] = useState(0)
   const [houses, setHouses] = useState<House[]>([])
   const [houseId, setHouseId] = useState('demo-house-a')
   const [role, setRole] = useState<ViewerRole>(() => roleFromQuery())
@@ -82,6 +83,8 @@ export default function App() {
   const localDemo = import.meta.env.DEV || new URLSearchParams(window.location.search).get('local') === 'true'
   const canSelectHouse = Boolean(maxIdentity || localDemo || remoteDemo)
   const canWrite = Boolean(localDemo || remoteDemo || (maxIdentity?.selected_house_id && maxIdentity.selected_house_id === houseId))
+  const connectingMax = !canSelectHouse && !authError && (!bridgeSettled || Boolean(launchContext.initData))
+  const maxLaunchWithoutIdentity = !canSelectHouse && !connectingMax && (authError || Boolean(launchContext.platform))
   const [state, setState] = useState<HouseState | null>(null)
   const [issue, setIssue] = useState<Issue | null>(null)
   const [message, setMessage] = useState('')
@@ -121,6 +124,22 @@ export default function App() {
   }, [houseId, role, viewerId])
   useEffect(() => { void loadOverview() }, [loadOverview])
   useEffect(() => {
+    let attempts = 0
+    const refreshBridge = () => {
+      const next = getMaxLaunchContext()
+      setLaunchContext((current) => current.initData === next.initData && current.platform === next.platform && current.issueId === next.issueId ? current : next)
+      if (next.initData || ++attempts >= 20) {
+        setBridgeSettled(true)
+        window.clearInterval(timer)
+      }
+    }
+    const timer = window.setInterval(refreshBridge, 250)
+    window.addEventListener('hashchange', refreshBridge)
+    window.addEventListener('pageshow', refreshBridge)
+    refreshBridge()
+    return () => { window.clearInterval(timer); window.removeEventListener('hashchange', refreshBridge); window.removeEventListener('pageshow', refreshBridge) }
+  }, [authAttempt])
+  useEffect(() => {
     let stopped = false
     let timer = 0
     const tick = async () => {
@@ -135,9 +154,22 @@ export default function App() {
     timer = window.setTimeout(() => void tick(), 60_000)
     return () => { stopped = true; window.clearTimeout(timer) }
   }, [issue?.id, refresh])
-  useEffect(() => { if (!launchContext.initData) return; Promise.all([api.validateMaxContext(launchContext.initData), api.identity(launchContext.initData)]).then(([context, identity]) => { setMaxUserName(context.user?.first_name || null); setMaxIdentity(identity); setRole(identity.role); if (identity.selected_house_id) setHouseId(identity.selected_house_id) }).catch(() => setError('Не удалось подтвердить запуск в MAX. Откройте приложение из сообщения бота ещё раз.')) }, [launchContext.initData])
+  useEffect(() => {
+    if (!launchContext.initData) return
+    let active = true
+    setAuthError(false)
+    api.identity(launchContext.initData).then((identity) => {
+      if (!active) return
+      setMaxUserName(launchContext.unsafe?.user?.first_name || null)
+      setMaxIdentity(identity)
+      setRole(identity.role)
+      if (identity.selected_house_id) setHouseId(identity.selected_house_id)
+      setActiveTab((tab) => tab === 'house' ? 'tasks' : tab)
+    }).catch(() => { if (active) setAuthError(true) })
+    return () => { active = false }
+  }, [launchContext.initData, launchContext.unsafe?.user?.first_name, authAttempt])
   useEffect(() => { if (!launchContext.issueId) return; api.issue(launchContext.issueId).then(setIssue).catch(() => undefined) }, [launchContext.issueId])
-  useEffect(() => { if (!launchContext.initData && !localDemo && !remoteDemo) return; try { if (!window.localStorage.getItem('dompuls-tour-v1')) setTourOpen(true) } catch { /* ignore */ } }, [launchContext.initData, localDemo, remoteDemo])
+  useEffect(() => { if (!maxIdentity && !localDemo && !remoteDemo) return; try { if (!window.localStorage.getItem('dompuls-tour-v1')) setTourOpen(true) } catch { /* ignore */ } }, [maxIdentity, localDemo, remoteDemo])
 
   async function perform(task: () => Promise<void>) { setBusy(true); setError(null); try { await task() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось выполнить действие') } finally { setBusy(false) } }
   function submitSignal(forceAiFailure = false) { void perform(async () => { const result = await api.signal(houseId, message, undefined, forceAiFailure, photos, String(viewerId)); setFallback(result.fallback); setPendingSignalId(result.signal?.id || null); setFallbackCategory(result.classification?.category || result.issue?.category || result.fallback?.candidate?.category || 'other'); if (result.issue) setIssue(await api.issue(result.issue.id)); if (!result.fallback) { setMessage(''); setPhotos([]); setShowReport(false) } await refresh() }) }
@@ -311,12 +343,12 @@ export default function App() {
       <div className="hero-main">
         <div className="role-pill" data-tour="role">
           <span className="role-pill-dot"></span>
-          {canSelectHouse ? currentRole : 'Гость'}
+          {canSelectHouse ? currentRole : connectingMax ? 'Подключаем' : 'Гость'}
         </div>
         <h1>{activeTab === 'tasks'
           ? !canSelectHouse ? 'Обращения жителей' : role === 'resident' ? 'Ваши обращения' : role === 'representative' ? 'Решения по дому' : role === 'uk' ? 'Обращения для УК' : 'Назначенные работы'
           : activeTab === 'house' ? 'Состояние дома' : activeTab === 'initiatives' ? 'Инициативы' : activeTab === 'archive' ? 'Архив' : 'Настройки'}</h1>
-        <p className="hero-desc">{canSelectHouse ? roleIntro(role) : 'Обзор состояния дома. Чтобы сообщить о проблеме, откройте ДомПульс в MAX.'}</p>
+        <p className="hero-desc">{canSelectHouse ? roleIntro(role) : connectingMax ? 'Проверяем вход через MAX…' : 'Посмотрите, что происходит в доме. Для обращения нужен вход через MAX.'}</p>
         <p className="hero-meta">{state?.house.address || 'Загрузка дома…'}{maxUserName ? ` · ${maxUserName}` : ''}</p>
       </div>
       <img className="hero-mascot" src={mascot.hero} alt="Макс — голубь-помощник" />
@@ -328,12 +360,18 @@ export default function App() {
       {!state ? <button className="max-btn max-btn--secondary" disabled={overviewLoading} onClick={() => void loadOverview()}>{overviewLoading ? 'Пробуем снова…' : 'Повторить'}</button> : null}
       <button className="error-banner-close" aria-label="Закрыть" onClick={() => setError(null)}>×</button>
     </div> : null}
-    {!canSelectHouse ? <div className="disclosure public-entry" role="status">
-      <span>Сейчас вы смотрите обзор дома. Войдите через MAX, чтобы выбрать свой дом, сообщить о проблеме и следить за результатом.</span>
-      <a className="max-btn max-btn--primary public-entry-link" href="https://max.ru/t312_hakaton_max_bot?startapp" target="_blank" rel="noopener noreferrer">Открыть ДомПульс в MAX</a>
+    {!canSelectHouse && connectingMax ? <div className="account-notice" role="status">Подключаем ваш профиль MAX…</div> : null}
+    {maxLaunchWithoutIdentity ? <div className="account-notice account-notice--warning" role="alert">
+      <strong>Не удалось войти через MAX</strong>
+      <span>Попробуйте обновить вход. Если открывали приложение по ссылке, запустите его кнопкой в чате бота.</span>
+      <button className="max-btn max-btn--primary" onClick={() => { setAuthError(false); setBridgeSettled(false); setLaunchContext(getMaxLaunchContext()); setAuthAttempt((count) => count + 1) }}>Повторить вход</button>
+    </div> : null}
+    {!canSelectHouse && !connectingMax && !maxLaunchWithoutIdentity ? <div className="account-notice" role="status">
+      <strong>ДомПульс доступен в MAX</strong>
+      <span>Здесь можно посмотреть состояние дома. Чтобы сообщить о проблеме и следить за результатом, откройте приложение в MAX.</span>
+      <a className="max-btn max-btn--primary public-entry-link" href="https://max.ru/t312_hakaton_max_bot?startapp" target="_blank" rel="noopener noreferrer">Открыть в MAX</a>
     </div> : null}
     {maxIdentity && !maxIdentity.selected_house_id ? <div className="disclosure" role="status">Вы вошли через MAX. Теперь выберите свой дом — после этого сможете отправить обращение и видеть его статус. <button className="max-btn max-btn--primary" onClick={openHousePicker}>Выбрать дом</button></div> : null}
-    {maxIdentity ? <p className="disclosure">Вход подтверждён через MAX ID {maxIdentity.user_id}. Дом выбран вами самостоятельно; статус жителя пока не проверен.</p> : null}
 
     {/* ─── TABS CONTENT ──────────────────────────────────────────── */}
     {activeTab === 'tasks' && <>
@@ -388,17 +426,15 @@ export default function App() {
             <p>Опишите проблему своими словами. Если место не определится, мы уточним его здесь.</p>
           </div>
           <textarea className="report-textarea" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Например: в подъезде не горит лампочка" rows={4} />
-          <div className="chips">
-            {demoMessages.map((text) => <button className="chip" key={text} onClick={() => setMessage(text)}>{text}</button>)}
-          </div>
+          <p className="report-hint">Например: «Во втором подъезде не работает лифт». Чем точнее место, тем меньше уточнений.</p>
           <PhotoInput photos={photos} onChange={setPhotos} label="Фото проблемы" />
           <div className="btn-row">
             <button className="max-btn max-btn--primary" style={{ flex: 1 }} disabled={busy || !message.trim()} onClick={() => submitSignal()}>
               {busy ? 'Сохраняем…' : 'Зарегистрировать'}
             </button>
-            <button className="max-btn max-btn--ghost" onClick={() => { setShowDemo((v) => !v); setFallback(undefined) }}>
+            {localDemo || remoteDemo ? <button className="max-btn max-btn--ghost" onClick={() => { setShowDemo((v) => !v); setFallback(undefined) }}>
               {showDemo ? 'Скрыть' : 'Это демо'}
-            </button>
+            </button> : null}
           </div>
           {showDemo ? <div className="fallback-banner">
             <strong>Демо-инструменты</strong>
@@ -607,7 +643,7 @@ export default function App() {
             </select> : <span>{canSelectHouse ? currentRole : 'Гость'}</span>}
           </div>
         </div>
-        <div className="cell-simple">
+        <button className="cell-simple" onClick={openHousePicker}>
           <div className="cell-before cell-before--muted">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           </div>
@@ -616,7 +652,7 @@ export default function App() {
             <span className="cell-subtitle">{state?.house.address || 'Загрузка…'}</span>
           </div>
           <div className="cell-after"><span className="cell-chevron">{chevron}</span></div>
-        </div>
+        </button>
         {new URLSearchParams(window.location.search).get('local') === 'true' ? <button className="cell-simple" onClick={resetDemo}>
           <div className="cell-before cell-before--muted">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
@@ -638,9 +674,7 @@ export default function App() {
           <div className="cell-after"><span className="cell-chevron">{chevron}</span></div>
         </button>
       </div>
-      <p className="disclosure" style={{ marginTop: 'var(--spacing-2xl)' }}>
-        В рабочем MAX роль определяется правами пользователя. Выбор дома — самоопределение, не подтверждение права собственности.
-      </p>
+      {maxIdentity ? <p className="account-footnote">Вы вошли через MAX. Дом выбран вами; проживание пока не подтверждено.</p> : null}
       </section>
 
       <section className="section">
@@ -673,7 +707,7 @@ export default function App() {
             <div className="cell-before cell-before--default"><strong className="cell-step">4</strong></div>
             <div className="cell-content">
               <span className="cell-title">Исполнитель выполняет, житель проверяет</span>
-              <span className="cell-subtitle">Результат подтверждают или переоткрывают</span>
+              <span className="cell-subtitle">Результат подтверждают или возвращают на доработку</span>
             </div>
           </div>
         </div>
