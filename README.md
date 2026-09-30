@@ -194,4 +194,4 @@ Security notes: [docs/security.md](docs/security.md).
 - [Evidence registry](docs/evidence_registry.md)
 - [Security](docs/security.md)
 - [Production deployment](docs/deployment.md)
-- [Презентация для сдачи (PDF)](output/pdf/DomSreda_MAX_hackathon_submission.pdf) · [редактируемая продуктовая часть (PPTX)](submission/DomSreda_MAX_hackathon.pptx). Первый лист PDF — служебный доступ для проверки; рабочие секреты в репозитории отсутствуют.
+- [Презентация команды для сдачи (PDF)](output/pdf/DomSreda_MAX_hackathon_submission.pdf). Исходный PDF команды находится в `submission/`; `submission/enhance_team_deck.py` обновляет его служебный слайд с hash исходного кода и добавляет два слайда по критериям оценки, сохраняя VK Sans Display DemiBold. Прежний PPTX не является редактируемым исходником этой версии. Рабочие секреты в репозитории отсутствуют.
