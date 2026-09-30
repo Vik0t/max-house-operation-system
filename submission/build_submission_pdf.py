@@ -5,6 +5,7 @@ a MAX account; the local Docker default intentionally uses simulated MAX.
 """
 
 from io import BytesIO
+import os
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
@@ -21,7 +22,18 @@ FONT = "/System/Library/Fonts/Supplemental/Arial.ttf"
 FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 
 
+def required_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise SystemExit(f"Set {name} to the verified frozen artifact value before building the PDF")
+    return value
+
+
 def build_access_page() -> BytesIO:
+    source_commit = required_env("DOMPULS_SOURCE_COMMIT")
+    source_sha256 = required_env("DOMPULS_SOURCE_SHA256")
+    miniapp_commit = required_env("DOMPULS_MINIAPP_COMMIT")
+    source_archive = f"DomPuls-source-{source_commit[:7]}.zip"
     pdfmetrics.registerFont(TTFont("ArialRU", FONT))
     pdfmetrics.registerFont(TTFont("ArialRUBold", FONT_BOLD))
     source = PdfReader(SOURCE)
@@ -53,9 +65,9 @@ def build_access_page() -> BytesIO:
     y = line("Бот MAX", "@t312_hakaton_max_bot", y, link="https://max.ru/t312_hakaton_max_bot")
     y = line("Мини-приложение", "apaww.github.io/dom.sreda.io", y, link="https://apaww.github.io/dom.sreda.io/")
     y = line("API / проверка", "104.252.77.141.nip.io/health", y, link="https://104.252.77.141.nip.io/health")
-    y = line("Архив исходников", "DomPuls-source-4361999.zip", y)
-    y = line("Версия исходников", "4361999", y)
-    y = line("Версия mini-app", "9655151", y)
+    y = line("Архив исходников", source_archive, y)
+    y = line("Версия исходников", source_commit[:7], y)
+    y = line("Версия mini-app", miniapp_commit[:7], y)
 
     page.setFont("ArialRUBold", 13)
     page.setFillColor(dark)
@@ -73,7 +85,7 @@ def build_access_page() -> BytesIO:
 
     page.setFillColor(muted)
     page.setFont("ArialRU", 9)
-    page.drawString(52, 85, "SHA-256 архива: 8cac74dd55af52503f476efa09ee996e9f5d1268ecd26682e9fab3018a30f3f0")
+    page.drawString(52, 85, f"SHA-256 архива: {source_sha256}")
     page.drawString(52, 70, "Доступ: обычный аккаунт MAX. Логин и пароль для демо не требуются; рабочие токены в Git не публикуются.")
     page.drawString(52, 55, "Локально: cp .env.example .env; docker compose up --build. По умолчанию MAX симулируется.")
     page.drawString(52, 40, "Передача в УК модельная; официальный канал УК/ГИС ЖКХ не подключён.")
