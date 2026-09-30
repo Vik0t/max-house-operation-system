@@ -11,5 +11,6 @@
 | E-007 | Representative is the best primary persona | ASSUMPTION | product spec hypothesis | UNVALIDATED |
 | E-008 | 20 repeated E2E runs have zero critical failures | TECH_BENCHMARK | automated test loop | VERIFIED |
 | E-009 | Group initiative poll accepts one vote per MAX user | TECH_BENCHMARK | live group message created an informal poll; MAX callback stored one vote, repeated callback received 409; bot-worker unit tests | VERIFIED LIVE VOTE; VISUAL CARD REFRESH NOT INDEPENDENTLY INSPECTED |
+| E-010 | One living Issue card can be created and edited in the MAX group | TECH_BENCHMARK | production `POST /messages` returned a MAX message ID; `PUT /messages` returned `success=true` for the seeded elevator Issue (30 September 2026); 116 automated tests cover card reuse, privacy and restart state | VERIFIED LIVE TRANSPORT; NEXT RESIDENT MESSAGE/STATE-CHANGE VISUAL CHECK STILL PENDING |
 
 Do not present UNVALIDATED claims as measured outcomes.
