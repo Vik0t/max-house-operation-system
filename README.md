@@ -79,6 +79,8 @@ docker compose logs -f bot
 
 Для reopen path на шаге 4 выберите `Нет, переоткрыть`; Issue станет REOPENED, WorkOrder — REWORK_REQUIRED, появится `Начать доработку`.
 
+Живой тест группы MAX 30.09.2026 подтвердил `read_all_messages=true`, приём сообщения жителя, создание Initiative/неформального опроса и запись голоса через callback. Повторный голос того же участника отклонён. После теста демо-БД возвращена к исходному seed; состояние подключения проверенной группы и polling marker сохранены.
+
 Полный сценарий: [docs/demo.md](docs/demo.md).
 
 ## Demo users / roles
