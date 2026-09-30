@@ -7,5 +7,6 @@ node_modules
 *.sqlite3
 dist
 output
-submission
+submission/*
+!submission/api_test_data.json
 .codex-finalizer

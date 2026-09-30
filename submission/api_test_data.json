@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "dataset": "deterministic-demo-seed",
+  "reset_command": "./scripts/reset-demo.sh",
+  "houses": ["demo-house-a", "demo-house-b"],
+  "primary_issue": {
+    "id": "demo-current-elevator-issue",
+    "house_id": "demo-house-a",
+    "asset_id": "house-a-elevator-2",
+    "initial_state": "NEEDS_CONFIRMATION"
+  },
+  "primary_asset": {
+    "id": "house-a-elevator-2",
+    "zone_id": "house-a-entrance-2"
+  },
+  "initiative": {
+    "id": "seed-parking-light-initiative",
+    "house_id": "demo-house-a",
+    "option": "У въезда",
+    "initial_state": "INFORMAL_POLL"
+  }
+}

@@ -1,2 +1,1 @@
-"""DomPuls API package."""
-
+"""Дом.Среда API package."""

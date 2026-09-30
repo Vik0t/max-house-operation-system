@@ -355,7 +355,7 @@ class PollState:
         temporary.replace(self.path)
 
 
-class DomPulsApi:
+class DomSredaApi:
     def __init__(self, base_url: str, internal_api_key: str | None = None):
         self.base_url = base_url.rstrip("/")
         self.internal_api_key = internal_api_key
@@ -1049,7 +1049,7 @@ def is_recognized_result(result: dict[str, Any]) -> bool:
 
 def help_text(house_id: str, role: str = "resident") -> str:
     return (
-        "**ДомПульс — бот состояния дома**\n\n"
+        "**Дом.Среда — бот состояния дома**\n\n"
         "Опишите проблему обычным сообщением, например:\n"
         "«лифт опять встал во втором подъезде»\n\n"
         "Или инициативу:\n"
@@ -1166,7 +1166,7 @@ def role_denied_text(required: str) -> str:
         )
     return (
         f"Это действие доступно роли «{ROLE_LABELS[required]}».\n\n"
-        "В ДомПульсе житель сообщает и подтверждает, домоуправляющий принимает решение о передаче, "
+        "В сервисе «Дом.Среда» житель сообщает и подтверждает, домоуправляющий принимает решение о передаче, "
         "а УК и исполнитель обрабатывают работу. Выберите свою рабочую роль в меню, если это демо-сценарий."
     )
 
@@ -1208,7 +1208,7 @@ async def open_clarification(
 
 async def handle_message(
     adapter: MaxAdapter,
-    api: DomPulsApi,
+    api: DomSredaApi,
     state: PollState,
     message: IncomingMaxMessage,
     miniapp_url: str,
@@ -1408,7 +1408,7 @@ async def announce_result(
 
 async def resolve_duplicate(
     adapter: MaxAdapter,
-    api: DomPulsApi,
+    api: DomSredaApi,
     callback: IncomingMaxCallback,
     signal_id: str,
     candidate_issue_id: str,
@@ -1454,7 +1454,7 @@ async def resolve_duplicate(
 
 async def handle_callback(
     adapter: MaxAdapter,
-    api: DomPulsApi,
+    api: DomSredaApi,
     callback: IncomingMaxCallback,
     miniapp_url: str,
     bot_username: str,
@@ -1807,7 +1807,7 @@ async def handle_callback(
 
 async def notify_state_changes(
     adapter: MaxAdapter,
-    api: DomPulsApi,
+    api: DomSredaApi,
     state: PollState,
     miniapp_url: str,
     bot_username: str,
@@ -1893,7 +1893,7 @@ async def run() -> None:
     bot_username = str(bot.get("username") or "")
     LOGGER.info("Connected to MAX as @%s (%s)", bot_username or "unknown", bot.get("user_id", "unknown"))
     state = PollState(settings.max_poll_state_path, settings.max_default_house_id)
-    api = DomPulsApi(settings.dompuls_api_url, settings.internal_api_key)
+    api = DomSredaApi(settings.dompuls_api_url, settings.internal_api_key)
     failures = 0
     while True:
         try:

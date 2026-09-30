@@ -51,7 +51,7 @@ async function withFallback<T>(remoteFn: () => Promise<T>, localFn: () => Promis
   if (forcedLocal) return localFn()
   try { return await remoteFn() }
   catch (error) {
-    if (error instanceof TypeError) throw new Error('Сервер ДомПульса недоступен. Данные не сохранены — попробуйте позже.')
+    if (error instanceof TypeError) throw new Error('Сервер «Дом.Среда» недоступен. Данные не сохранены — попробуйте позже.')
     throw error
   }
 }

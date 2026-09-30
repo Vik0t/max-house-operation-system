@@ -25,7 +25,7 @@ Show House A metrics and click `Лифт №2`. Point out three previous closed 
 
 ### 1:10–1:40 — Chat to structured Issue
 
-Send the three supplied messages in order. The current issue is shown as one grouped incident with confirmations and source messages. Say: «ДомПульс связал сообщения не просто с обращением, а с объектом и его историей».
+Send the three supplied messages in order. The current issue is shown as one grouped incident with confirmations and source messages. Say: «Дом.Среда связала сообщения не просто с обращением, а с объектом и его историей».
 
 ### 1:40–3:00 — Closed loop
 

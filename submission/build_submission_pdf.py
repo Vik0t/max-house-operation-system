@@ -16,8 +16,8 @@ from reportlab.pdfgen import canvas
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "submission" / "DomPuls_MAX_hackathon_v2.pdf"
-OUTPUT = ROOT / "output" / "pdf" / "DomPuls_MAX_hackathon_submission.pdf"
+SOURCE = ROOT / "submission" / "DomSreda_MAX_hackathon.pdf"
+OUTPUT = ROOT / "output" / "pdf" / "DomSreda_MAX_hackathon_submission.pdf"
 FONT = "/System/Library/Fonts/Supplemental/Arial.ttf"
 FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 
@@ -33,7 +33,7 @@ def build_access_page() -> BytesIO:
     source_commit = required_env("DOMPULS_SOURCE_COMMIT")
     source_sha256 = required_env("DOMPULS_SOURCE_SHA256")
     miniapp_commit = required_env("DOMPULS_MINIAPP_COMMIT")
-    source_archive = f"DomPuls-source-{source_commit[:7]}.zip"
+    source_archive = f"DomSreda-source-{source_commit[:7]}.zip"
     pdfmetrics.registerFont(TTFont("ArialRU", FONT))
     pdfmetrics.registerFont(TTFont("ArialRUBold", FONT_BOLD))
     source = PdfReader(SOURCE)
@@ -52,11 +52,11 @@ def build_access_page() -> BytesIO:
         page.drawString(232, y, value)
         if link:
             page.linkURL(link, (230, y - 3, min(width - 45, 232 + pdfmetrics.stringWidth(value, "ArialRU", 13)), y + 15), relative=0)
-        return y - 31
+        return y - 28
 
     page.setFillColor(dark)
     page.setFont("ArialRUBold", 25)
-    page.drawString(52, height - 60, "ДомПульс: доступ для проверки")
+    page.drawString(52, height - 60, "Дом.Среда: доступ для проверки")
     page.setFont("ArialRU", 11)
     page.setFillColor(muted)
     page.drawString(52, height - 80, "Служебный слайд. Не входит в продуктовую часть презентации.")
@@ -65,6 +65,7 @@ def build_access_page() -> BytesIO:
     y = line("Бот MAX", "@t312_hakaton_max_bot", y, link="https://max.ru/t312_hakaton_max_bot")
     y = line("Мини-приложение", "apaww.github.io/dom.sreda.io", y, link="https://apaww.github.io/dom.sreda.io/")
     y = line("API / проверка", "104.252.77.141.nip.io/health", y, link="https://104.252.77.141.nip.io/health")
+    y = line("Исходный код", "github.com/Vik0t/max-house-operation-system", y, link="https://github.com/Vik0t/max-house-operation-system")
     y = line("Архив исходников", source_archive, y)
     y = line("Версия исходников", source_commit[:7], y)
     y = line("Версия mini-app", miniapp_commit[:7], y)

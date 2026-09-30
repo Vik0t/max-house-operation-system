@@ -3,6 +3,8 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/apps/api
 COPY pyproject.toml alembic.ini ./
 RUN pip install --no-cache-dir '.[dev]'
+COPY DATA-API.yaml openapi.json ./
+COPY submission/api_test_data.json ./submission/api_test_data.json
 COPY apps/api ./apps/api
 COPY configs ./configs
 COPY scripts ./scripts

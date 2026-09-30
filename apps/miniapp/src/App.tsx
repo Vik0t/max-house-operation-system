@@ -302,7 +302,7 @@ export default function App() {
       <div className="topbar-brand">
         <img className="topbar-logo" src={mascot.logo} alt="Макс — голубь-помощник" />
         <div className="topbar-info">
-          <span className="topbar-title">ДомПульс</span>
+          <span className="topbar-title">Дом.Среда</span>
           <span className="topbar-subtitle">{maxUserName ? `${maxUserName}, ваш дом` : 'Ваши задачи по дому'}</span>
         </div>
       </div>
@@ -367,7 +367,7 @@ export default function App() {
       <button className="max-btn max-btn--primary" onClick={() => { setAuthError(false); setBridgeSettled(false); setLaunchContext(getMaxLaunchContext()); setAuthAttempt((count) => count + 1) }}>Повторить вход</button>
     </div> : null}
     {!canSelectHouse && !connectingMax && !maxLaunchWithoutIdentity ? <div className="account-notice" role="status">
-      <strong>ДомПульс доступен в MAX</strong>
+      <strong>Дом.Среда доступна в MAX</strong>
       <span>Здесь можно посмотреть состояние дома. Чтобы сообщить о проблеме и следить за результатом, откройте приложение в MAX.</span>
       <a className="max-btn max-btn--primary public-entry-link" href="https://max.ru/t312_hakaton_max_bot?startapp" target="_blank" rel="noopener noreferrer">Открыть в MAX</a>
     </div> : null}
@@ -529,7 +529,7 @@ export default function App() {
           <strong>{mapPreview.address}</strong>
           <p>{mapPreview.condition || 'Характеристики дома не указаны'}</p>
           <p>Управляющая организация: {mapPreview.management_org || 'не подтверждена'}</p>
-          <p className="disclosure">Данные справочника требуют проверки. {houses.some((item) => item.id === mapPreview.id) ? 'Дом подключён к ДомПульсу.' : 'Карточка дома будет создана при выборе.'}</p>
+          <p className="disclosure">Данные справочника требуют проверки. {houses.some((item) => item.id === mapPreview.id) ? 'Дом подключён к сервису «Дом.Среда».' : 'Карточка дома будет создана при выборе.'}</p>
           {canSelectHouse || houses.some((item) => item.id === mapPreview.id) ? (
             <button className="max-btn max-btn--primary" disabled={busy} onClick={() => selectHouse(mapPreview)}>{houses.some((item) => item.id === mapPreview.id) ? 'Открыть этот дом' : 'Выбрать и подключить дом'}</button>
           ) : (
@@ -675,7 +675,7 @@ export default function App() {
         </button>
       </div>
       {maxIdentity ? <p className="account-footnote">Вы вошли через MAX. Дом выбран вами; проживание пока не подтверждено.</p> : null}
-      <p className="account-footnote">Передача обращения в УК пока работает внутри ДомПульса. Официальный канал организации не подключён.</p>
+      <p className="account-footnote">Передача обращения в УК пока работает внутри сервиса «Дом.Среда». Официальный канал организации не подключён.</p>
       </section>
 
       <section className="section">

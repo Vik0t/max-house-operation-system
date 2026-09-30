@@ -66,7 +66,7 @@ class MockMaxAdapter(MaxAdapter):
     mode = "SIMULATED"
 
     async def get_bot(self) -> dict[str, Any]:
-        return {"is_bot": True, "first_name": "ДомПульс Demo", "username": "dompuls_demo_bot", "simulated": True}
+        return {"is_bot": True, "first_name": "Дом.Среда Demo", "username": "dom_sreda_demo_bot", "simulated": True}
 
     async def send_message(
         self,

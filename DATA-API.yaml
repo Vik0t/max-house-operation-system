@@ -1,77 +1,300 @@
+# Версия схемы проверок. ${...} подставляет проверяющий из своей MAX-сессии.
 version: 1
-name: ДомПульс — проверка API
+name: Дом.Среда
 base_url: https://104.252.77.141.nip.io
 openapi: ./openapi.json
+
+# GET-проверки безопасны для общего сервера. Запросы ниже, изменяющие данные,
+# выполняются последовательно только на отдельной БД с исходным demo seed.
+test_data:
+  format: deterministic PostgreSQL seed
+  source: apps/api/app/seed.py
+  file: submission/api_test_data.json
+  reset_command: ./scripts/reset-demo.sh
+  house_a_id: demo-house-a
+  house_b_id: demo-house-b
+  issue_id: demo-current-elevator-issue
+  asset_id: house-a-elevator-2
+  initiative_id: seed-parking-light-initiative
+
 auth:
-  public_reads: Без авторизации
-  writes: Подписанный MAX initData; внутренний бот использует серверный ключ
-  demo: Локально AUTH_MODE=demo, тестовые роли указаны в README.md
+  public_reads: no credentials required
+  production_writes:
+    header: X-Max-Init-Data
+    value: freshly signed initData from the MAX mini-app
+    max_age_seconds: 3600
+    prerequisite: Each test account selects demo-house-a in the MAX mini-app before writing.
+    role_assignment: Assign representative, UK and executor MAX user IDs in server allowlists before API checks; showcase role switching in the bot does not change API permissions.
+  local_docker:
+    mode: AUTH_MODE=demo
+    credentials: none
+    note: The same write requests run without X-Max-Init-Data at http://localhost:8000 after the documented Docker startup.
+
+test_accounts:
+  resident:
+    login: own MAX account
+    password: not applicable
+    role: resident
+    init_data_variable: MAX_INIT_DATA_RESIDENT
+  representative:
+    login: assigned MAX user ID from MAX_REPRESENTATIVE_IDS
+    password: not applicable
+    role: representative
+    init_data_variable: MAX_INIT_DATA_REPRESENTATIVE
+  uk:
+    login: assigned MAX user ID from MAX_UK_IDS
+    password: not applicable
+    role: uk
+    init_data_variable: MAX_INIT_DATA_UK
+  executor:
+    login: assigned MAX user ID from MAX_EXECUTOR_IDS
+    password: not applicable
+    role: executor
+    init_data_variable: MAX_INIT_DATA_EXECUTOR
+
 checks:
-  - name: Доступность сервиса
+  - id: health
+    name: Доступность API
     method: GET
     path: /health
     role: public
-    expected_status: 200
-    response_format: JSON
-    expected_fields: [status]
-  - name: Дома
+    request: {path_params: {}, query: {}, headers: {Accept: application/json}, body: null}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [status, max_mode, llm_mode]}
+  - id: houses
+    name: Список домов
     method: GET
     path: /houses
     role: public
-    expected_status: 200
-    response_format: JSON array
-  - name: Состояние дома A
+    request: {path_params: {}, query: {}, headers: {Accept: application/json}, body: null}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: array, item_required_fields: [id, address, management_org]}
+  - id: house_a_state
+    name: Состояние первого дома
     method: GET
-    path: /houses/demo-house-a/state
+    path: /houses/{house_id}/state
     role: public
-    expected_status: 200
-    response_format: JSON
-    expected_fields: [house, issues, initiatives]
-  - name: Состояние дома B
+    request:
+      path_params: {house_id: demo-house-a}
+      query: {role: resident}
+      headers: {Accept: application/json}
+      body: null
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [house, metrics, assets, issues, initiatives]}
+  - id: house_b_state
+    name: Состояние второго дома
     method: GET
-    path: /houses/demo-house-b/state
+    path: /houses/{house_id}/state
     role: public
-    expected_status: 200
-    response_format: JSON
-    expected_fields: [house, issues, initiatives]
-  - name: Объекты дома A
+    request:
+      path_params: {house_id: demo-house-b}
+      query: {role: resident}
+      headers: {Accept: application/json}
+      body: null
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [house, metrics, assets, issues, initiatives]}
+  - id: assets
+    name: Объекты первого дома
     method: GET
-    path: /houses/demo-house-a/assets
+    path: /houses/{house_id}/assets
     role: public
-    expected_status: 200
-    response_format: JSON array
-  - name: Текущие проблемы
+    request:
+      path_params: {house_id: demo-house-a}
+      query: {}
+      headers: {Accept: application/json}
+      body: null
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: array, item_required_fields: [id, house_id, name, operational_state]}
+  - id: issue
+    name: Текущая проблема лифта
     method: GET
-    path: /issues?house_id=demo-house-a
+    path: /issues/{issue_id}
     role: public
-    expected_status: 200
-    response_format: JSON array
-  - name: MAX-интеграция
+    request:
+      path_params: {issue_id: demo-current-elevator-issue}
+      query: {}
+      headers: {Accept: application/json}
+      body: null
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, house_id, asset_id, state, recurrence_count]}
+  - id: issues_by_house
+    name: Проблемы первого дома
+    method: GET
+    path: /issues
+    role: public
+    request:
+      path_params: {}
+      query: {house_id: demo-house-a}
+      headers: {Accept: application/json}
+      body: null
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: array, item_required_fields: [id, house_id, asset_id, state]}
+  - id: asset_timeline
+    name: История лифта
+    method: GET
+    path: /assets/{asset_id}/timeline
+    role: public
+    request:
+      path_params: {asset_id: house-a-elevator-2}
+      query: {}
+      headers: {Accept: application/json}
+      body: null
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [asset, events]}
+  - id: max_status
+    name: Статус MAX-адаптера
     method: GET
     path: /integrations/max/status
     role: public
-    expected_status: 200
-    response_format: JSON
-    expected_fields: [mode, connected]
+    request: {path_params: {}, query: {}, headers: {Accept: application/json}, body: null}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [mode, connected]}
+
+# Последовательная проверка на чистой тестовой БД. На общей production-БД эти
+# запросы изменят seeded issue/initiative и повлияют на live demo.
 write_scenarios:
-  - name: Сообщение жителя → сигнал
+  - id: signal
+    name: Сообщение жителя создаёт Signal и проблему освещения
     method: POST
     path: /signals
     role: resident
-    expected_status: 201
-    response_format: JSON
-    notes: Не запускайте на общем production доме без согласования; создаёт запись.
-  - name: Голосование по инициативе
+    request:
+      path_params: {}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_RESIDENT}'}
+      body: {house_id: demo-house-a, text: В подъезде 2 не горит лампочка, нужна замена, manual_category: lighting, manual_zone_id: house-a-entrance-2, source_type: manual, external_id: jury-api-manifest-signal}
+    expected_status_codes: [201]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [signal, classification, issue]}
+  - id: resident_confirmation
+    name: Житель подтверждает проблему
     method: POST
-    path: /initiatives/{initiative_id}/poll
-    parameters: [initiative_id]
+    path: /issues/{issue_id}/resident-confirm
     role: resident
-    expected_status: 200
-    response_format: JSON
-  - name: Верификация выполненной работы
+    request:
+      path_params: {issue_id: demo-current-elevator-issue}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_RESIDENT}'}
+      body: {actor_id: '${MAX_USER_ID_RESIDENT}'}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [issue, idempotent_replay]}
+  - id: confirm
+    name: Домоуправляющий подтверждает и готовит действие
+    method: POST
+    path: /issues/{issue_id}/confirm
+    role: representative
+    request:
+      path_params: {issue_id: demo-current-elevator-issue}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_REPRESENTATIVE}'}
+      body: {actor_id: '${MAX_USER_ID_REPRESENTATIVE}'}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, state, actions, confirmations_count], field_values: {state: ACTION_READY}}
+  - id: submit
+    name: Домоуправляющий передаёт в учебный канал УК
+    method: POST
+    path: /issues/{issue_id}/submit
+    role: representative
+    request:
+      path_params: {issue_id: demo-current-elevator-issue}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_REPRESENTATIVE}'}
+      body: {actor_id: '${MAX_USER_ID_REPRESENTATIVE}'}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, state, submissions], field_values: {state: SUBMITTED, 'submissions[0].is_simulated': true}}
+  - id: accept
+    name: УК принимает обращение
+    method: POST
+    path: /issues/{issue_id}/accept
+    role: uk
+    request:
+      path_params: {issue_id: demo-current-elevator-issue}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_UK}'}
+      body: {actor_id: '${MAX_USER_ID_UK}'}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, state], field_values: {state: ACCEPTED}}
+  - id: assign
+    name: УК назначает работу
+    method: POST
+    path: /work-orders
+    role: uk
+    request:
+      path_params: {}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_UK}'}
+      body: {issue_id: demo-current-elevator-issue, assignee_id: '${MAX_USER_ID_EXECUTOR}', priority: high}
+    expected_status_codes: [201]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, issue_id, status], field_values: {status: ASSIGNED}}
+    capture: {work_order_id: id}
+  - id: start_work
+    name: Исполнитель начинает работу
+    method: PATCH
+    path: /work-orders/{order_id}
+    role: executor
+    request:
+      path_params: {order_id: '${work_order_id}'}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_EXECUTOR}'}
+      body: {status: IN_PROGRESS, actor_id: '${MAX_USER_ID_EXECUTOR}'}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, status], field_values: {status: IN_PROGRESS}}
+  - id: evidence
+    name: Исполнитель прикладывает учебное подтверждение
+    method: POST
+    path: /work-orders/{order_id}/evidence
+    role: executor
+    request:
+      path_params: {order_id: '${work_order_id}'}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_EXECUTOR}'}
+      body: {type: after_photo, uri: /demo/elevator-after.svg, comment: Проверочный снимок, author_id: '${MAX_USER_ID_EXECUTOR}'}
+    expected_status_codes: [201]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, status, evidence]}
+  - id: complete_work
+    name: Исполнитель завершает работу
+    method: PATCH
+    path: /work-orders/{order_id}
+    role: executor
+    request:
+      path_params: {order_id: '${work_order_id}'}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_EXECUTOR}'}
+      body: {status: DONE, actor_id: '${MAX_USER_ID_EXECUTOR}'}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, status], field_values: {status: DONE}}
+  - id: verify
+    name: Житель подтверждает результат
     method: POST
     path: /issues/{issue_id}/verify
-    parameters: [issue_id]
     role: resident
-    expected_status: 200
-    response_format: JSON
+    request:
+      path_params: {issue_id: demo-current-elevator-issue}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_RESIDENT}'}
+      body: {verifier_type: resident, verifier_id: '${MAX_USER_ID_RESIDENT}', result: confirmed}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, state, verifications, work_orders], field_values: {state: CLOSED}}
+  - id: poll
+    name: Житель голосует по инициативе
+    method: POST
+    path: /initiatives/{initiative_id}/poll
+    role: resident
+    request:
+      path_params: {initiative_id: seed-parking-light-initiative}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_RESIDENT}'}
+      body: {voter_id: '${MAX_USER_ID_RESIDENT}', option: У въезда}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, state, votes, options], field_values: {state: INFORMAL_POLL}}
+  - id: handoff
+    name: Домоуправляющий фиксирует результат опроса
+    method: POST
+    path: /initiatives/{initiative_id}/handoff
+    role: representative
+    request:
+      path_params: {initiative_id: seed-parking-light-initiative}
+      query: {}
+      headers: {Content-Type: application/json, X-Max-Init-Data: '${MAX_INIT_DATA_REPRESENTATIVE}'}
+      body: {actor_id: '${MAX_USER_ID_REPRESENTATIVE}', handoff_type: OSS_PREPARATION}
+    expected_status_codes: [200]
+    expected_response: {content_type: application/json, json_type: object, required_fields: [id, state, formal_handoff_type], field_values: {state: FORMAL_HANDOFF_REQUIRED}}

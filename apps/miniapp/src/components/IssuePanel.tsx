@@ -143,7 +143,7 @@ export function IssuePanel({ issue, managementOrg, viewerId, alreadyReported, ro
         {issue.submissions?.at(-1) ? (
           <div className="drawer-honesty">
             <b>Тестовый канал передачи</b>
-            Обращение видно сотруднику УК в ДомПульсе. Официальная отправка в систему УК пока не подключена.
+            Обращение видно сотруднику УК в сервисе «Дом.Среда». Официальная отправка в систему УК пока не подключена.
           </div>
         ) : null}
 

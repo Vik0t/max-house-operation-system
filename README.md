@@ -1,4 +1,4 @@
-# ДомПульс / MAX
+# Дом.Среда / MAX
 
 Работающий P0 MVP операционного цифрового двойника многоквартирного дома:
 
@@ -7,7 +7,7 @@ Signal → Issue / Initiative → House / Zone / Asset → Action → Submission
 → WorkOrder → Evidence → Verification → House Memory
 ```
 
-ДомПульс управляет состоянием объектов дома во времени. Главный proof — не карточка заявки, а полный цикл для `Подъезд 2 → Лифт №2` с историей повторений, работой исполнителя, evidence, проверкой жителем и обновлением Asset timeline.
+«Дом.Среда» управляет состоянием объектов дома во времени. Главный proof — не карточка заявки, а полный цикл для `Подъезд 2 → Лифт №2` с историей повторений, работой исполнителя, evidence, проверкой жителем и обновлением Asset timeline.
 
 ## Быстрый запуск
 
@@ -34,6 +34,10 @@ docker compose up --build
 - API / health: <https://104.252.77.141.nip.io/health>
 
 Первый запуск автоматически выполняет `alembic upgrade head` и загружает seed. Повторный запуск не дублирует данные.
+
+Остановить все локальные компоненты без удаления данных: `docker compose down`.
+Повторно запустить их: `docker compose up --build`. База хранится в Docker volume;
+`docker compose down -v` удалит её и для обычной остановки не нужен.
 
 ## Environment
 
@@ -122,7 +126,7 @@ Suite покрывает:
 - Initiative flow;
 - second-house routing.
 
-Последний подтверждённый прогон: `109 passed`, включая 20 последовательных прогонов основного сценария; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
+Последний подтверждённый прогон текущей версии: `117 passed`, включая исполнимую проверку `DATA-API.yaml` и 20 последовательных прогонов основного сценария; production React build также проходит. Метрики и ограничения выборки: [docs/ai_metrics.md](docs/ai_metrics.md).
 
 ## Архитектура
 
@@ -135,6 +139,15 @@ Suite покрывает:
 - PostgreSQL хранит House State Graph обычными relation tables.
 
 Детали: [docs/architecture.md](docs/architecture.md), [docs/api.md](docs/api.md). Статическая схема для проверки: [openapi.json](openapi.json), сценарии проверок: [DATA-API.yaml](DATA-API.yaml).
+
+`DATA-API.yaml` и [JSON с тестовыми идентификаторами](submission/api_test_data.json)
+разделяют безопасные публичные GET-проверки боевого HTTPS API и
+последовательный сценарий записи. Запись проверяйте на отдельной локальной
+Docker-БД после `./scripts/reset-demo.sh`: она меняет seeded Issue и Initiative.
+На боевом API запись требует свежий подписанный `X-Max-Init-Data` (не старше часа),
+выбранный дом и закреплённые в allowlist MAX ID для ролей домоуправляющего,
+УК и исполнителя. Переключение роли в демонстрационном боте не даёт прав API.
+Пока MAX ID проверяющих не назначены, боевые POST-проверки не готовы к запуску.
 
 ## Real vs simulated
 
@@ -181,4 +194,4 @@ Security notes: [docs/security.md](docs/security.md).
 - [Evidence registry](docs/evidence_registry.md)
 - [Security](docs/security.md)
 - [Production deployment](docs/deployment.md)
-- [Презентация для сдачи (PDF)](output/pdf/DomPuls_MAX_hackathon_submission.pdf) · [редактируемая продуктовая часть (PPTX)](submission/DomPuls_MAX_hackathon_v2.pptx). Первый лист PDF — служебный доступ для проверки; рабочие секреты в репозитории отсутствуют.
+- [Презентация для сдачи (PDF)](output/pdf/DomSreda_MAX_hackathon_submission.pdf) · [редактируемая продуктовая часть (PPTX)](submission/DomSreda_MAX_hackathon.pptx). Первый лист PDF — служебный доступ для проверки; рабочие секреты в репозитории отсутствуют.

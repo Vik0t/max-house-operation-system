@@ -87,7 +87,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="ДомПульс API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Дом.Среда API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -226,9 +226,9 @@ async def assistant_chat(payload: AssistantChatRequest, request: Request, db: Se
             async with httpx.AsyncClient(timeout=12.0) as client:
                 response = await client.post(
                     settings.llm_api_url,
-                    headers={"Authorization": f"Bearer {settings.llm_api_key}", "Content-Type": "application/json", "HTTP-Referer": settings.max_miniapp_url, "X-Title": "DomPuls"},
+                    headers={"Authorization": f"Bearer {settings.llm_api_key}", "Content-Type": "application/json", "HTTP-Referer": settings.max_miniapp_url, "X-Title": "Дом.Среда"},
                     json={"model": settings.llm_model, "messages": [
-                        {"role": "system", "content": "Ты Макс, доброжелательный помощник ДомПульса. Отвечай по-русски, коротко и ясно. Не выдумывай факты о конкретном доме, сроках, законах и УК. Роли: житель сообщает, домоуправляющий передаёт, УК принимает и назначает, исполнитель выполняет, житель проверяет. Внешняя передача в УК пока демонстрационная. Не запрашивай персональные данные."},
+                        {"role": "system", "content": "Ты Макс, доброжелательный помощник сервиса «Дом.Среда». Отвечай по-русски, коротко и ясно. Не выдумывай факты о конкретном доме, сроках, законах и УК. Роли: житель сообщает, домоуправляющий передаёт, УК принимает и назначает, исполнитель выполняет, житель проверяет. Внешняя передача в УК пока демонстрационная. Не запрашивай персональные данные."},
                         *safe_messages,
                     ], "max_tokens": 300, "temperature": 0.3},
                 )

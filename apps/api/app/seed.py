@@ -196,7 +196,7 @@ def reset_and_seed(*, reset: bool = False, if_empty: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Seed deterministic DomPuls demo data")
+    parser = argparse.ArgumentParser(description="Seed deterministic Дом.Среда demo data")
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--if-empty", action="store_true")
     args = parser.parse_args()

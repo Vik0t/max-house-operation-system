@@ -1,7 +1,7 @@
 [project]
 name = "dompuls"
 version = "0.1.0"
-description = "DomPuls operational digital twin MVP for MAX"
+description = "Дом.Среда operational digital twin MVP for MAX"
 requires-python = ">=3.12"
 dependencies = [
   "alembic==1.16.5",
@@ -27,4 +27,3 @@ addopts = "-q"
 
 [tool.coverage.run]
 source = ["apps/api/app"]
-

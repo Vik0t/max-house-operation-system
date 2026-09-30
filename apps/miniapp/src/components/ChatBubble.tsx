@@ -6,7 +6,7 @@ import { getMaxLaunchContext } from '../maxBridge'
 type Bubble = { role: 'user' | 'assistant'; content: string }
 
 const SUGGESTIONS = [
-  'Что такое «ДомПульс»?',
+  'Что такое «Дом.Среда»?',
   'Как передать проблему в УК?',
   'Кто такой домоуправляющий?',
 ]

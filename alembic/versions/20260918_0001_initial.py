@@ -1,4 +1,4 @@
-"""Initial DomPuls schema.
+"""Initial Дом.Среда schema.
 
 Revision ID: 20260918_0001
 Revises: None
@@ -22,4 +22,3 @@ def downgrade() -> None:
     from alembic import op
 
     Base.metadata.drop_all(bind=op.get_bind())
-

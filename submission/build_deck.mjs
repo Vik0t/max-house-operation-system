@@ -9,7 +9,7 @@ const nodeModules = process.env.RUNTIME_NODE_MODULES
 if (!skillDir || !pythonExecutable || !nodeModules) throw new Error('Set SKILL_DIR, RUNTIME_PYTHON and RUNTIME_NODE_MODULES')
 const { Presentation, PresentationFile } = await import(pathToFileURL(path.join(nodeModules, '@oai/artifact-tool/dist/artifact_tool.mjs')).href)
 const buildDir = path.join(workspaceDir, 'submission/.build')
-const finalPath = path.join(workspaceDir, 'submission/DomPuls_MAX_hackathon_v2.pptx')
+const finalPath = path.join(workspaceDir, 'submission/DomSreda_MAX_hackathon.pptx')
 await fs.mkdir(buildDir, { recursive: true })
 const { finalizePresentation } = await import(pathToFileURL(path.join(skillDir, 'container_tools/artifact_tool_utils.mjs')).href)
 
@@ -25,7 +25,7 @@ function base(title, number, dark = false) {
   const slide = pptx.slides.add()
   slide.background.fill = dark ? C.ink : C.pale
   if (number > 1) {
-    text(slide, 70, 40, 650, 28, 'ДОМПУЛЬС   /   MAX', 18, dark ? C.mint : C.blue, true)
+    text(slide, 70, 40, 650, 28, 'ДОМ.СРЕДА   /   MAX', 18, dark ? C.mint : C.blue, true)
     text(slide, 70, 82, 1110, 90, title, 45, dark ? C.white : C.ink, true)
     text(slide, 1165, 660, 50, 25, String(number).padStart(2, '0'), 17, dark ? C.mint : C.muted)
   }
@@ -39,11 +39,11 @@ function note(slide, value) { slide.speakerNotes.textFrame.setText(value) }
 {
   const slide = base('', 1, true)
   text(slide, 76, 78, 500, 50, 'ПРОЕКТ ДЛЯ ХАКАТОНА MAX', 21, C.mint, true)
-  text(slide, 76, 174, 850, 130, 'ДомПульс', 82, C.white, true)
+  text(slide, 76, 174, 850, 130, 'Дом.Среда', 82, C.white, true)
   text(slide, 80, 331, 820, 130, 'Сообщение жителя становится\nпроверенным результатом для дома', 34, C.white)
   text(slide, 80, 612, 820, 40, 'Бот MAX · мини-приложение · история объектов дома', 22, C.mint)
   await mascot(slide, 'max-04.png', 960, 266, 240, 254)
-  note(slide, 'Основа: продуктовая спецификация MAX_DomPuls_Product_Technical_Spec_v3.md; README.md проекта.')
+  note(slide, 'Основа: продуктовая спецификация проекта и README.md.')
 }
 {
   const slide = base('Повторная поломка без истории работ', 2)
@@ -111,7 +111,7 @@ function note(slide, value) { slide.speakerNotes.textFrame.setText(value) }
   text(slide, 655, 279, 520, 112, 'Адрес, зоны, оборудование, УК, подрядчики, маршруты и пороги повторений.', 26, C.ink)
   text(slide, 76, 429, 1080, 124, 'Предлагаемый пилот: один дом в Кольцово, совет дома и УК, 30 дней. Измерим долю проблем с понятным статусом и подтверждённым результатом.', 27, C.ink)
   text(slide, 76, 610, 1110, 43, 'Для внедрения нужны подтверждение проживания и официальный канал УК.', 21, C.muted)
-  note(slide, 'Тиражирование: configs/demo_house_a.yaml и configs/demo_house_b.yaml. Пилот — предложение, не договорённость. Метрики гипотетические до запуска. 108 тестов и 20 последовательных E2E проходят. Передача в УК модельная, демо-история синтетическая, опрос не является ОСС.')
+  note(slide, 'Тиражирование: configs/demo_house_a.yaml и configs/demo_house_b.yaml. Пилот — предложение, не договорённость. Метрики гипотетические до запуска. 20 последовательных E2E проходят. Передача в УК модельная, демо-история синтетическая, опрос не является ОСС.')
 }
 {
   const slide = base('Демонстрация за четыре минуты', 8, true)
@@ -146,6 +146,6 @@ const result = await finalizePresentation({
   layoutArgs: ['--expected-slide-size-emu', '12192000,6858000', '--validate-heading-fit'],
   fontPolicy: { basis: 'design', families: ['Arial'] },
   verifyArtifactToolImport: true,
-  receiptPath: path.join(stagingDir, 'DomPuls_MAX_hackathon.validation-v4.json'),
+  receiptPath: path.join(stagingDir, 'DomSreda_MAX_hackathon.validation.json'),
 })
 console.log(JSON.stringify({ finalPath, result }))

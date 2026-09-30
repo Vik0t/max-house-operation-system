@@ -1,4 +1,4 @@
-# ДомПульс · MAX mini-app
+# Дом.Среда · MAX mini-app
 
 Публичный frontend P0 MVP: состояние дома, проблемы и их жизненный цикл, work orders, evidence/verification, история активов и инициативы.
 
