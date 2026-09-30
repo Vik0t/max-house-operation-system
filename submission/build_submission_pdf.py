@@ -53,8 +53,8 @@ def build_access_page() -> BytesIO:
     y = line("Бот MAX", "@t312_hakaton_max_bot", y, link="https://max.ru/t312_hakaton_max_bot")
     y = line("Мини-приложение", "apaww.github.io/dom.sreda.io", y, link="https://apaww.github.io/dom.sreda.io/")
     y = line("API / проверка", "104.252.77.141.nip.io/health", y, link="https://104.252.77.141.nip.io/health")
-    y = line("Архив исходников", "DomPuls-source-ac85b75.zip", y)
-    y = line("Версия исходников", "ac85b75", y)
+    y = line("Архив исходников", "DomPuls-source-4361999.zip", y)
+    y = line("Версия исходников", "4361999", y)
     y = line("Версия mini-app", "9655151", y)
 
     page.setFont("ArialRUBold", 13)
@@ -73,7 +73,7 @@ def build_access_page() -> BytesIO:
 
     page.setFillColor(muted)
     page.setFont("ArialRU", 9)
-    page.drawString(52, 85, "SHA-256 архива: 116cfc48d7661be4687de40fc4c0d1588ddadab6f169325a2082be707267b115")
+    page.drawString(52, 85, "SHA-256 архива: 8cac74dd55af52503f476efa09ee996e9f5d1268ecd26682e9fab3018a30f3f0")
     page.drawString(52, 70, "Доступ: обычный аккаунт MAX. Логин и пароль для демо не требуются; рабочие токены в Git не публикуются.")
     page.drawString(52, 55, "Локально: cp .env.example .env; docker compose up --build. По умолчанию MAX симулируется.")
     page.drawString(52, 40, "Передача в УК модельная; официальный канал УК/ГИС ЖКХ не подключён.")
