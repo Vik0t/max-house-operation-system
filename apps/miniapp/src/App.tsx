@@ -313,7 +313,9 @@ export default function App() {
           <span className="role-pill-dot"></span>
           {currentRole}
         </div>
-        <h1>{activeTab === 'tasks' ? 'Ваши обращения' : activeTab === 'house' ? 'Состояние дома' : activeTab === 'initiatives' ? 'Инициативы' : activeTab === 'archive' ? 'Архив' : 'Настройки'}</h1>
+        <h1>{activeTab === 'tasks'
+          ? role === 'resident' ? 'Ваши обращения' : role === 'representative' ? 'Решения по дому' : role === 'uk' ? 'Обращения для УК' : 'Назначенные работы'
+          : activeTab === 'house' ? 'Состояние дома' : activeTab === 'initiatives' ? 'Инициативы' : activeTab === 'archive' ? 'Архив' : 'Настройки'}</h1>
         <p className="hero-desc">{roleIntro(role)}</p>
         <p className="hero-meta">{state?.house.address || 'Загрузка дома…'}{maxUserName ? ` · ${maxUserName}` : ''}</p>
       </div>
@@ -353,7 +355,7 @@ export default function App() {
         </div>}
       </section>
 
-      {state?.my_issues?.length ? <section className="section">
+      {role === 'resident' && state?.my_issues?.length ? <section className="section">
         <div className="section-header">
           <span className="section-header-label">Мои обращения</span>
           <span className="section-header-count">{state.my_issues.length}</span>
