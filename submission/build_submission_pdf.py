@@ -73,7 +73,7 @@ def build_access_page() -> BytesIO:
 
     page.setFillColor(muted)
     page.setFont("ArialRU", 9)
-    page.drawString(52, 85, "SHA-256 архива: 8d328e20ab79360de3394c0a0aca6211b99e5121c66f507d39f04d5a70e3501d")
+    page.drawString(52, 85, "SHA-256 архива: ed3f507f40e10689e749d4e68a78ad981575e4dd301277a0ac8c27a9f938ac5c")
     page.drawString(52, 70, "Доступ: обычный аккаунт MAX. Логин и пароль для демо не требуются; рабочие токены в Git не публикуются.")
     page.drawString(52, 55, "Локально: cp .env.example .env; docker compose up --build. По умолчанию MAX симулируется.")
     page.drawString(52, 40, "Передача в УК модельная; официальный канал УК/ГИС ЖКХ не подключён.")
