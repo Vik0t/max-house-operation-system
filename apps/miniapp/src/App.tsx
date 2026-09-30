@@ -311,12 +311,12 @@ export default function App() {
       <div className="hero-main">
         <div className="role-pill" data-tour="role">
           <span className="role-pill-dot"></span>
-          {currentRole}
+          {canSelectHouse ? currentRole : 'Гость'}
         </div>
         <h1>{activeTab === 'tasks'
-          ? role === 'resident' ? 'Ваши обращения' : role === 'representative' ? 'Решения по дому' : role === 'uk' ? 'Обращения для УК' : 'Назначенные работы'
+          ? !canSelectHouse ? 'Обращения жителей' : role === 'resident' ? 'Ваши обращения' : role === 'representative' ? 'Решения по дому' : role === 'uk' ? 'Обращения для УК' : 'Назначенные работы'
           : activeTab === 'house' ? 'Состояние дома' : activeTab === 'initiatives' ? 'Инициативы' : activeTab === 'archive' ? 'Архив' : 'Настройки'}</h1>
-        <p className="hero-desc">{roleIntro(role)}</p>
+        <p className="hero-desc">{canSelectHouse ? roleIntro(role) : 'Обзор состояния дома. Чтобы сообщить о проблеме, откройте ДомПульс в MAX.'}</p>
         <p className="hero-meta">{state?.house.address || 'Загрузка дома…'}{maxUserName ? ` · ${maxUserName}` : ''}</p>
       </div>
       <img className="hero-mascot" src={mascot.hero} alt="Макс — голубь-помощник" />
@@ -599,12 +599,12 @@ export default function App() {
           </div>
           <div className="cell-content">
             <span className="cell-title">Ваша роль</span>
-            <span className="cell-subtitle">{currentRole}</span>
+            <span className="cell-subtitle">{canSelectHouse ? currentRole : 'Гость'}</span>
           </div>
           <div className="cell-after">
             {new URLSearchParams(window.location.search).get('local') === 'true' || remoteDemo ? <select className="settings-select" aria-label="Выбрать роль" value={role} onChange={(event) => setRole(event.target.value as ViewerRole)}>
               {roles.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select> : <span>{currentRole}</span>}
+            </select> : <span>{canSelectHouse ? currentRole : 'Гость'}</span>}
           </div>
         </div>
         <div className="cell-simple">
