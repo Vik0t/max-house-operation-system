@@ -28,6 +28,15 @@ class MaxAdapter(ABC):
     ) -> dict[str, Any]: ...
 
     @abstractmethod
+    async def edit_message(
+        self,
+        message_id: str,
+        *,
+        text: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]: ...
+
+    @abstractmethod
     async def answer_callback(
         self,
         callback_id: str,
@@ -68,6 +77,15 @@ class MockMaxAdapter(MaxAdapter):
         attachments: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         return {"delivered": True, "simulated": True, "chat_id": chat_id, "user_id": user_id, "text": text, "attachments": attachments or []}
+
+    async def edit_message(
+        self,
+        message_id: str,
+        *,
+        text: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return {"success": True, "simulated": True, "message_id": message_id, "text": text, "attachments": attachments or []}
 
     async def answer_callback(
         self,
@@ -140,6 +158,21 @@ class RealMaxAdapter(MaxAdapter):
         if attachments:
             body["attachments"] = attachments
         return await self._request("POST", "/messages", params=params, json=body)
+
+    async def edit_message(
+        self,
+        message_id: str,
+        *,
+        text: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"text": text, "format": "markdown", "notify": False}
+        if attachments is not None:
+            body["attachments"] = attachments
+        result = await self._request("PUT", "/messages", params={"message_id": message_id}, json=body)
+        if isinstance(result, dict) and result.get("success") is False:
+            raise MaxAdapterError("MAX rejected the message edit")
+        return result
 
     async def answer_callback(
         self,

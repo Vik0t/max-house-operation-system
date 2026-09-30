@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.bot_worker import CATEGORY_LABELS, PollState, cancel_keyboard, category_keyboard, current_role, fallback_keyboard, format_result, format_status, group_ack, handle_callback, handle_message, help_text, initiative_keyboard, is_recognized_result, issue_button_label, issue_keyboard, menu_keyboard, notify_state_changes, role_denied_text, zone_keyboard
+from app.bot_worker import CATEGORY_LABELS, PollState, cancel_keyboard, category_keyboard, current_role, fallback_keyboard, format_result, format_status, group_ack, group_issue_card, handle_callback, handle_message, help_text, initiative_keyboard, is_recognized_result, issue_button_label, issue_keyboard, menu_keyboard, notify_state_changes, role_denied_text, zone_keyboard
 from app.integrations.max_adapter import MaxAdapterError
 from app.integrations.max_updates import IncomingMaxCallback, image_url, parse_incoming_callback, parse_incoming_message, polling_is_active
 
@@ -92,6 +92,17 @@ def test_poll_state_persists_issue_watchers(tmp_path):
     state.watch_issue(message, {"id": "issue-1", "state": "NEEDS_CONFIRMATION"})
     restored = PollState(str(path), "demo-house-a")
     assert restored.watchers["issue-1"]["chat:77"]["last_state"] == "NEEDS_CONFIRMATION"
+
+
+def test_group_neighbours_each_keep_private_issue_updates(tmp_path):
+    message = parse_incoming_message(sample_update())
+    state = PollState(str(tmp_path / "state.json"), "demo-house-a")
+    state.watch_issue(message, {"id": "issue-1", "state": "NEEDS_CONFIRMATION"})
+    neighbour = type(message)(message.text, "43", message.chat_id, "max-2", message.attachments)
+    state.watch_issue(neighbour, {"id": "issue-1", "state": "NEEDS_CONFIRMATION"})
+    watchers = PollState(str(tmp_path / "state.json"), "demo-house-a").watchers["issue-1"]
+    assert {item["user_id"] for item in watchers.values()} == {"42", "43"}
+    assert all(item["source_conversation_key"] == "chat:77" for item in watchers.values())
 
 
 def test_poll_state_registers_group_permissions(tmp_path):
@@ -407,6 +418,7 @@ def test_polling_health_uses_fresh_marker_file(tmp_path):
 class RecordingAdapter:
     def __init__(self, *, direct_message_fails: bool = False):
         self.sent: list[dict] = []
+        self.edited: list[dict] = []
         self.direct_message_fails = direct_message_fails
 
     async def check_chat_permissions(self, chat_id):
@@ -416,6 +428,11 @@ class RecordingAdapter:
         self.sent.append(kwargs)
         if self.direct_message_fails and "user_id" in kwargs:
             raise MaxAdapterError("user never opened the private chat")
+        return {"body": {"mid": f"max-{len(self.sent)}"}}
+
+    async def edit_message(self, message_id, **kwargs):
+        self.edited.append({"message_id": message_id, **kwargs})
+        return {"success": True}
 
 
 def run_message(adapter, api, state, text):
@@ -624,7 +641,7 @@ def test_clarification_from_a_group_is_finished_by_a_button_in_the_private_chat(
     assert state.dialog("user:42") is None
 
 
-def test_group_acknowledges_a_new_problem_in_one_line_and_sends_the_card_privately(tmp_path):
+def test_group_publishes_one_shared_issue_card_and_sends_details_privately(tmp_path):
     class Api:
         async def process_message(self, message, house_id, **kwargs):
             return {"issue": {"id": "issue-1", "title": "Лифт: не работает", "state": "NEEDS_CONFIRMATION"}}
@@ -633,13 +650,113 @@ def test_group_acknowledges_a_new_problem_in_one_line_and_sends_the_card_private
     sent = run_message(RecordingAdapter(), Api(), state, "лифт не работает во втором подъезде")
     assert len(sent) == 2
     assert sent[0]["chat_id"] == "77"
-    assert sent[0]["text"].startswith("✅ Записал:")
-    assert "Подробности в личке" in sent[0]["text"]
-    assert "attachments" not in sent[0]
+    assert "Проблема дома" in sent[0]["text"]
+    buttons = sent[0]["attachments"][0]["payload"]["buttons"]
+    assert buttons[0][0]["payload"] == "confirm_issue:issue-1"
+    assert not any(button.get("payload", "").startswith("issue_submit:") for row in buttons for button in row)
     assert sent[1]["user_id"] == "42"
     assert "chat_id" not in sent[1]
     assert "Проблема зарегистрирована" in sent[1]["text"]
     assert sent[1]["attachments"]
+    assert state.group_card("issue-1", "77")["message_id"] == "max-1"
+
+
+def test_repeated_group_reports_edit_the_same_card_and_survive_restart(tmp_path):
+    class Api:
+        calls = 0
+
+        async def process_message(self, message, house_id, **kwargs):
+            self.calls += 1
+            return {"issue": {
+                "id": "issue-1", "title": "Лифт №2: не работает", "asset_name": "Лифт №2",
+                "state": "NEEDS_CONFIRMATION", "confirmations_count": self.calls,
+                "recurrence_count": 4,
+            }, "clustered": self.calls > 1}
+
+    path = tmp_path / "state.json"
+    state, adapter, api = PollState(str(path), "demo-house-a"), RecordingAdapter(), Api()
+    run_message(adapter, api, state, "лифт не работает во втором подъезде")
+    assert PollState(str(path), "demo-house-a").group_card("issue-1", "77")["message_id"] == "max-1"
+    run_message(adapter, api, state, "лифт опять не работает во втором подъезде")
+    assert len([item for item in adapter.sent if item.get("chat_id") == "77"]) == 1
+    assert adapter.edited[0]["message_id"] == "max-1"
+    assert "Жителей подтвердили: 2" in adapter.edited[0]["text"]
+    assert "4 событий" in adapter.edited[0]["text"]
+
+
+def test_group_card_contains_no_private_actions_or_resident_names():
+    text, attachments, _ = group_issue_card({
+        "id": "issue-1", "title": "Лифт №2: не работает", "asset_name": "Лифт №2",
+        "state": "DONE_PENDING_VERIFICATION", "confirmations_count": 8,
+        "recurrence_count": 4, "signals": [{"author_id": "secret-user"}],
+        "submissions": [{"is_simulated": True}],
+        "work_orders": [{"status": "DONE", "evidence": [{"id": "photo-1"}]}],
+    }, "dompuls_bot")
+    assert "secret-user" not in text
+    assert "Подтверждений выполнения: 1" in text
+    assert "Передача в УК: учебная" in text
+    buttons = attachments[0]["payload"]["buttons"]
+    assert [item["type"] for row in buttons for item in row] == ["open_app"]
+
+
+def test_group_confirmation_updates_public_card_not_private_workflow(tmp_path):
+    class Api:
+        async def resident_confirm(self, issue_id, actor_id):
+            return {"issue": {
+                "id": issue_id, "title": "Лифт №2: проблема", "asset_name": "Лифт №2",
+                "state": "NEEDS_CONFIRMATION", "confirmations_count": 6,
+            }, "idempotent_replay": False}
+
+    class Adapter(RecordingAdapter):
+        async def answer_callback(self, callback_id, notification=None, message=None):
+            self.answer = message
+            self.notification = notification
+
+    state = PollState(str(tmp_path / "state.json"), "demo-house-a")
+    state.remember_group_card("issue-1", "77", "max-1", "old")
+    adapter = Adapter()
+    asyncio.run(handle_callback(adapter, Api(), IncomingMaxCallback("cb-1", "confirm_issue:issue-1", "42", "77"), "https://example.test/app/", "dompuls_bot", state))
+    assert adapter.notification == "Подтверждение учтено"
+    assert "Жителей подтвердили: 6" in adapter.answer["text"]
+    assert "Источник:" not in adapter.answer["text"]
+    assert not any(button.get("payload", "").startswith("issue_submit:") for row in adapter.answer["attachments"][0]["payload"]["buttons"] for button in row)
+    assert state.group_card("issue-1", "77")["signature"] != "old"
+
+
+def test_state_sync_edits_group_card_instead_of_spamming_chat(tmp_path):
+    class Api:
+        async def issue(self, issue_id):
+            return {"id": issue_id, "title": "Лифт №2", "asset_name": "Лифт №2",
+                    "state": "DONE_PENDING_VERIFICATION", "confirmations_count": 6,
+                    "work_orders": [{"status": "DONE", "evidence": [{"id": "photo-1"}]}]}
+
+    state = PollState(str(tmp_path / "state.json"), "demo-house-a")
+    state.remember_group_card("issue-1", "77", "max-1", "old")
+    state.watchers = {"issue-1": {"chat:77": {"chat_id": "77", "user_id": "42", "last_state": "WORK_IN_PROGRESS"}}}
+    adapter = RecordingAdapter()
+    asyncio.run(notify_state_changes(adapter, Api(), state, "https://example.test/app/", "dompuls_bot"))
+    assert not any(item.get("chat_id") == "77" for item in adapter.sent)
+    assert adapter.edited[0]["message_id"] == "max-1"
+    assert "Ждёт проверки жителем" in adapter.edited[0]["text"]
+    assert any(item.get("user_id") == "42" for item in adapter.sent)
+    asyncio.run(notify_state_changes(adapter, Api(), state, "https://example.test/app/", "dompuls_bot"))
+    assert len(adapter.edited) == 1
+
+
+def test_group_status_change_notifies_both_residents_privately(tmp_path):
+    class Api:
+        async def issue(self, issue_id):
+            return {"id": issue_id, "title": "Лифт №2", "state": "DONE_PENDING_VERIFICATION"}
+
+    state = PollState(str(tmp_path / "state.json"), "demo-house-a")
+    source = parse_incoming_message(sample_update())
+    state.watch_issue(source, {"id": "issue-1", "state": "WORK_IN_PROGRESS"})
+    state.watch_issue(type(source)(source.text, "43", source.chat_id, "max-2", source.attachments), {"id": "issue-1", "state": "WORK_IN_PROGRESS"})
+    state.remember_group_card("issue-1", "77", "max-1", "old")
+    adapter = RecordingAdapter()
+    asyncio.run(notify_state_changes(adapter, Api(), state, "https://example.test/app/", "dompuls_bot"))
+    assert {item.get("user_id") for item in adapter.sent} == {"42", "43"}
+    assert not any(item.get("chat_id") == "77" for item in adapter.sent)
 
 
 def test_group_initiative_publishes_a_shared_informal_poll(tmp_path):
@@ -721,8 +838,8 @@ def test_choosing_a_zone_in_private_tells_the_house_chat_the_report_is_registere
     assert adapter.answer["text"].startswith("**Проблема зарегистрирована**")
     group_lines = [item for item in adapter.sent if item.get("chat_id") == "77"]
     assert len(group_lines) == 1
-    assert group_lines[0]["text"].startswith("✅ Записал: Окно разбито")
-    assert "attachments" not in group_lines[0]
+    assert "Окно разбито" in group_lines[0]["text"]
+    assert group_lines[0]["attachments"]
 
 
 def test_duplicate_decision_reported_back_to_the_house_chat(tmp_path):
@@ -755,7 +872,7 @@ def test_duplicate_decision_reported_back_to_the_house_chat(tmp_path):
         )
     )
     assert adapter.sent[0]["chat_id"] == "77"
-    assert "Принял, это уже было" in adapter.sent[0]["text"]
+    assert "Проблема дома" in adapter.sent[0]["text"]
     # The reminder is consumed, not repeated on the next press.
     assert state.pop_duplicate_chat("signal-9") is None
 

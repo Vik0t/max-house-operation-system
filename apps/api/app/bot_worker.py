@@ -168,6 +168,9 @@ class PollState:
         # chat can be told about the decision made in a private chat.
         self.duplicate_chats: dict[str, str] = {}
         self.confirmed_issues: dict[str, list[str]] = {}
+        # issue_id -> chat_id -> MAX message. A shared problem has one living
+        # card per house chat, while personal workflow controls stay private.
+        self.group_cards: dict[str, dict[str, dict[str, str]]] = {}
         self.default_house_id = default_house_id
         self.load()
 
@@ -182,6 +185,7 @@ class PollState:
             self.roles = raw.get("roles") or {}
             self.duplicate_chats = raw.get("duplicate_chats") or {}
             self.confirmed_issues = raw.get("confirmed_issues") or {}
+            self.group_cards = raw.get("group_cards") or {}
         except (FileNotFoundError, json.JSONDecodeError, OSError, TypeError):
             self.marker = None
             self.houses = {}
@@ -191,6 +195,7 @@ class PollState:
             self.roles = {}
             self.duplicate_chats = {}
             self.confirmed_issues = {}
+            self.group_cards = {}
 
     def mark_confirmed(self, issue_id: str, user_id: str) -> None:
         users = self.confirmed_issues.setdefault(str(issue_id), [])
@@ -279,6 +284,21 @@ class PollState:
     def watch_issue(self, message: IncomingMaxMessage, issue: dict[str, Any]) -> None:
         self.watch_target(message.conversation_key, message.chat_id, message.user_id, issue)
 
+    def group_card(self, issue_id: str, chat_id: str) -> dict[str, str] | None:
+        return self.group_cards.get(str(issue_id), {}).get(str(chat_id))
+
+    def remember_group_card(self, issue_id: str, chat_id: str, message_id: str, signature: str) -> None:
+        self.group_cards.setdefault(str(issue_id), {})[str(chat_id)] = {
+            "message_id": str(message_id), "signature": signature,
+        }
+        self.save()
+
+    def mark_group_card_updated(self, issue_id: str, chat_id: str, signature: str) -> None:
+        card = self.group_card(issue_id, chat_id)
+        if card:
+            card["signature"] = signature
+            self.save()
+
     def watch_callback(self, callback: IncomingMaxCallback, issue: dict[str, Any]) -> None:
         self.watch_target(callback.conversation_key, callback.chat_id, callback.user_id, issue)
 
@@ -292,10 +312,24 @@ class PollState:
         issue_id = issue.get("id")
         if not issue_id:
             return
-        self.watchers.setdefault(str(issue_id), {})[conversation_key] = {
+        watchers = self.watchers.setdefault(str(issue_id), {})
+        watcher_key = conversation_key
+        if chat_id:
+            # A group can contain several residents. Keep each person's
+            # private notifications instead of replacing the first reporter
+            # whenever a neighbour confirms the same issue.
+            for key, existing in watchers.items():
+                if existing.get("chat_id") == chat_id and str(existing.get("user_id")) == str(user_id):
+                    watcher_key = key
+                    break
+            else:
+                if watcher_key in watchers:
+                    watcher_key = f"{conversation_key}:user:{user_id}"
+        watchers[watcher_key] = {
             "chat_id": chat_id,
             "user_id": user_id,
             "last_state": issue.get("state"),
+            "source_conversation_key": conversation_key,
         }
         self.save()
 
@@ -313,6 +347,7 @@ class PollState:
                     "roles": self.roles,
                     "duplicate_chats": self.duplicate_chats,
                     "confirmed_issues": self.confirmed_issues,
+                    "group_cards": self.group_cards,
                 },
                 ensure_ascii=False,
             )
@@ -755,6 +790,76 @@ def issue_keyboard(
     rows.append([{"type": "open_app", "text": "Открыть карточку", "web_app": bot_username, "payload": f"issue_{issue_id}"}])
     rows.append([menu_button()])
     return inline_keyboard(rows)
+
+
+def group_issue_card(issue: dict[str, Any], bot_username: str) -> tuple[str, list[dict[str, Any]], str]:
+    """Public, PII-free issue status. No representative/UK/executor controls."""
+    issue_id = str(issue["id"])
+    state = str(issue.get("state") or "")
+    lines = [
+        f"**Проблема дома · {asset_label(issue)}**",
+        short_issue_title(issue),
+        f"Состояние: {state_label(state)}",
+        f"Жителей подтвердили: {issue.get('confirmations_count', 0)}",
+    ]
+    if recurrence := int(issue.get("recurrence_count") or 0):
+        lines.append(f"Повторяемость: {recurrence} событий в истории объекта")
+    orders = issue.get("work_orders") or []
+    if orders:
+        current = orders[-1]
+        lines.append(f"Работа: {state_label(current.get('status'), ORDER_STATE_LABELS)}")
+        if evidence_count := len(current.get("evidence") or []):
+            lines.append(f"Подтверждений выполнения: {evidence_count}")
+    if any(item.get("is_simulated") for item in issue.get("submissions") or []):
+        lines.append("Передача в УК: учебная, официальный канал не подключён")
+    if state == "DONE_PENDING_VERIFICATION":
+        lines.append("Ждём проверки результата жителем.")
+    elif state == "CLOSED":
+        lines.append("Результат подтверждён жителем и сохранён в истории объекта.")
+    elif state == "REOPENED":
+        lines.append("Результат не подтверждён: проблема возвращена в работу.")
+    rows: list[list[dict[str, Any]]] = []
+    if state == "NEEDS_CONFIRMATION":
+        rows.append([{"type": "callback", "text": "У меня тоже", "payload": f"confirm_issue:{issue_id}"}])
+    rows.append([{"type": "open_app", "text": "История и подробности", "web_app": bot_username, "payload": f"issue_{issue_id}"}])
+    text = "\n".join(lines)
+    attachments = inline_keyboard(rows)
+    signature = json.dumps({"text": text, "attachments": attachments}, ensure_ascii=False, sort_keys=True)
+    return text, attachments, signature
+
+
+def max_message_id(response: Any) -> str | None:
+    if not isinstance(response, dict):
+        return None
+    body = response.get("body") or (response.get("message") or {}).get("body") or {}
+    value = body.get("mid") or response.get("message_id") or response.get("id")
+    return str(value) if value is not None else None
+
+
+async def publish_group_issue_card(
+    adapter: MaxAdapter,
+    state: PollState,
+    issue: dict[str, Any],
+    chat_id: str,
+    bot_username: str,
+) -> bool:
+    """Create once, then edit in place. Return whether the group was reached."""
+    issue_id = str(issue["id"])
+    text, attachments, signature = group_issue_card(issue, bot_username)
+    card = state.group_card(issue_id, chat_id)
+    if card:
+        if card.get("signature") != signature:
+            await adapter.edit_message(card["message_id"], text=text, attachments=attachments)
+            state.mark_group_card_updated(issue_id, chat_id, signature)
+        return True
+    response = await adapter.send_message(text=text, chat_id=chat_id, attachments=attachments)
+    if isinstance(response, dict) and response.get("success") is False:
+        raise MaxAdapterError("MAX rejected the group issue card")
+    if message_id := max_message_id(response):
+        state.remember_group_card(issue_id, chat_id, message_id, signature)
+    else:
+        LOGGER.warning("MAX did not return a message ID for issue %s in chat %s", issue_id, chat_id)
+    return True
 
 
 def initiative_keyboard(initiative: dict[str, Any], bot_username: str, role: str = "legacy") -> list[dict[str, Any]]:
@@ -1270,6 +1375,7 @@ async def announce_result(
         return
     role = current_role(state, message.conversation_key, message.user_id)
     attachments = None
+    ack = group_ack(result)
     if issue := result.get("issue"):
         state.watch_issue(message, issue)
         attachments = issue_keyboard(
@@ -1277,6 +1383,12 @@ async def announce_result(
             viewer_id=message.user_id,
             reported_now=str((result.get("signal") or {}).get("author_id")) == message.user_id,
         )
+        if message.chat_id:
+            try:
+                await publish_group_issue_card(adapter, state, issue, message.chat_id, bot_username)
+                ack = None
+            except MaxAdapterError:
+                LOGGER.exception("Could not update group card for issue %s", issue.get("id"))
     elif initiative := result.get("initiative"):
         if message.chat_id:
             # The poll belongs to the house conversation: every neighbour can
@@ -1291,7 +1403,7 @@ async def announce_result(
         attachments = initiative_keyboard(initiative, bot_username, role)
     if (result.get("fallback") or {}).get("type") == "DUPLICATE_CONFIRMATION":
         state.remember_duplicate_chat(str((result.get("signal") or {}).get("id") or ""), message.chat_id)
-    await send_reply(adapter, message, format_result(result, miniapp_url), attachments or fallback_keyboard(result, role), private=True, ack=group_ack(result))
+    await send_reply(adapter, message, format_result(result, miniapp_url), attachments or fallback_keyboard(result, role), private=True, ack=ack)
 
 
 async def resolve_duplicate(
@@ -1328,7 +1440,11 @@ async def resolve_duplicate(
         text = f"**Создана отдельная проблема**\n\n{format_result({'issue': issue}, miniapp_url)}"
     # The buttons sit in a private chat, so the house chat is told separately.
     if state and (chat_id := state.pop_duplicate_chat(signal_id)):
-        await adapter.send_message(text=group_ack({"issue": issue, "clustered": decision == "LINK"}) or "", chat_id=chat_id)
+        try:
+            await publish_group_issue_card(adapter, state, issue, chat_id, bot_username)
+        except MaxAdapterError:
+            LOGGER.exception("Could not update group card after duplicate decision")
+            await adapter.send_message(text=group_ack({"issue": issue, "clustered": decision == "LINK"}) or "", chat_id=chat_id)
     await adapter.answer_callback(
         callback.callback_id,
         notification="Решение сохранено",
@@ -1545,8 +1661,13 @@ async def handle_callback(
         # the private chat. The house chat still has to learn that the report is
         # now registered, after the clarification it was still waiting for.
         if chat_id := dialog.get("chat_id"):
-            ack = group_ack(result)
-            if ack:
+            if issue:
+                try:
+                    await publish_group_issue_card(adapter, state, issue, chat_id, bot_username)
+                except MaxAdapterError:
+                    LOGGER.exception("Could not update group card after clarification")
+                    await adapter.send_message(text=group_ack(result) or "", chat_id=chat_id)
+            elif ack := group_ack(result):
                 await adapter.send_message(text=ack, chat_id=chat_id)
         await adapter.answer_callback(callback.callback_id, notification="Сигнал обработан", message=callback_message(callback, format_result(result, miniapp_url), attachments))
         return
@@ -1588,6 +1709,15 @@ async def handle_callback(
             state.watch_callback(callback, issue)
             state.mark_confirmed(value, callback.user_id)
         notification = "Вы уже подтверждали эту проблему" if result.get("idempotent_replay") else "Подтверждение учтено"
+        if callback.chat_id and state and state.group_card(value, callback.chat_id):
+            text, attachments, signature = group_issue_card(issue, bot_username)
+            await adapter.answer_callback(
+                callback.callback_id,
+                notification=notification,
+                message={"text": text, "format": "markdown", "attachments": attachments},
+            )
+            state.mark_group_card_updated(value, callback.chat_id, signature)
+            return
         await adapter.answer_callback(
             callback.callback_id,
             notification=notification,
@@ -1689,6 +1819,7 @@ async def notify_state_changes(
         except httpx.HTTPError:
             continue
         current_state = str(issue.get("state"))
+        announced_groups: set[str] = set()
         for conversation_key, watcher in conversations.items():
             previous_state = watcher.get("last_state")
             if previous_state == current_state:
@@ -1699,7 +1830,7 @@ async def notify_state_changes(
                     f"{state_label(previous_state)} → {state_label(current_state)}\n\n"
                     f"{issue_next_step(issue)}"
                 )
-                role = state.role_for(conversation_key, str(watcher.get("user_id") or ""))
+                role = state.role_for(str(watcher.get("source_conversation_key") or conversation_key), str(watcher.get("user_id") or ""))
                 attachments = (
                     issue_keyboard(issue, miniapp_url, bot_username, role)
                     if current_state == "DONE_PENDING_VERIFICATION"
@@ -1708,11 +1839,12 @@ async def notify_state_changes(
                 # The house chat follows the job with one line, so neighbours see
                 # that something is being done; the card and the actions for the
                 # next role stay with the person who reported it.
-                if chat_id := watcher.get("chat_id"):
+                if (chat_id := watcher.get("chat_id")) and not state.group_card(issue_id, chat_id) and chat_id not in announced_groups:
                     await adapter.send_message(
                         text=f"🔧 {short_issue_title(issue)}: {state_label(previous_state)} → {state_label(current_state)}",
                         chat_id=chat_id,
                     )
+                    announced_groups.add(chat_id)
                 try:
                     await adapter.send_message(text=text, user_id=watcher.get("user_id"), attachments=attachments)
                 except MaxAdapterError:
@@ -1723,6 +1855,27 @@ async def notify_state_changes(
             changed = True
     if changed:
         state.save()
+    # Confirmations, evidence uploads and mini-app actions can change a card
+    # without changing the Issue state. Reconcile the shared cards from the
+    # database after every poll, including after a worker restart.
+    last_edit_by_chat: dict[str, float] = {}
+    for issue_id, chats in list(state.group_cards.items()):
+        try:
+            issue = await api.issue(issue_id)
+        except httpx.HTTPError:
+            continue
+        for chat_id, card in list(chats.items()):
+            _, _, signature = group_issue_card(issue, bot_username)
+            if card.get("signature") == signature:
+                continue
+            elapsed = asyncio.get_running_loop().time() - last_edit_by_chat.get(chat_id, 0.0)
+            if elapsed < 0.55:
+                await asyncio.sleep(0.55 - elapsed)
+            try:
+                await publish_group_issue_card(adapter, state, issue, chat_id, bot_username)
+                last_edit_by_chat[chat_id] = asyncio.get_running_loop().time()
+            except MaxAdapterError:
+                LOGGER.exception("Could not refresh group card for issue %s", issue_id)
 
 
 async def run() -> None:

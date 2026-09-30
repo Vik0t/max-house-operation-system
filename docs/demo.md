@@ -21,7 +21,7 @@ Start as `Житель`, then switch to `Домоуправляющий`, `УК 
 
 ### 0:40–1:10 — House memory
 
-Show House A metrics and click `Лифт №2`. Point out three previous closed incidents and current fourth incident. Close timeline.
+Show House A metrics and click `Лифт №2`. Point out three previous closed incidents and current fourth incident. Close timeline. In the MAX group, the bot keeps one public issue card with its confirmations and recurrence count; subsequent steps edit that same card.
 
 ### 1:10–1:40 — Chat to structured Issue
 
@@ -42,7 +42,7 @@ Open the current Issue with the appropriate role and press:
 → Да, всё исправлено
 ```
 
-Show that передача помечена как демонстрационная. After verification, Asset becomes HEALTHY. Reopen Asset timeline and show the new Issue and WorkOrder.
+Show that передача помечена как демонстрационная. After verification, Asset becomes HEALTHY. Reopen Asset timeline and show the new Issue and WorkOrder. Return to the MAX group card: it now says the resident confirmed the result, with no operator controls or personal data exposed.
 
 ### 3:00–3:35 — Community initiative
 
