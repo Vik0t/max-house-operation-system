@@ -411,10 +411,10 @@ export default function App() {
 
       {/* ─── REPORT BUTTON ────────────────────────────────────────────── */}
       {role === 'resident' ? <section className="section report-cta" data-tour="report" style={{ paddingTop: 0 }}>
-        <button className="max-btn max-btn--primary max-btn--full" disabled={!canWrite} onClick={() => setShowReport((value) => !value)}>
-          {plusIcon}
-          {showReport ? 'Закрыть форму' : 'Сообщить о проблеме'}
-        </button>
+        {canWrite ? <button className="max-btn max-btn--primary max-btn--full" onClick={() => setShowReport((value) => !value)}>
+          {plusIcon}{showReport ? 'Закрыть форму' : 'Сообщить о проблеме'}
+        </button> : canSelectHouse ? <button className="max-btn max-btn--primary max-btn--full" onClick={openHousePicker}>Сначала выберите свой дом</button>
+          : <a className="max-btn max-btn--primary max-btn--full public-entry-link" href="https://max.ru/t312_hakaton_max_bot?startapp" target="_blank" rel="noopener noreferrer">Сообщить через MAX</a>}
       </section> : null}
 
       {/* ─── REPORT FORM (hidden by default) ──────────────────────────── */}
@@ -675,6 +675,7 @@ export default function App() {
         </button>
       </div>
       {maxIdentity ? <p className="account-footnote">Вы вошли через MAX. Дом выбран вами; проживание пока не подтверждено.</p> : null}
+      <p className="account-footnote">Передача обращения в УК пока работает внутри ДомПульса. Официальный канал организации не подключён.</p>
       </section>
 
       <section className="section">
@@ -722,9 +723,6 @@ export default function App() {
         </div>
       </section>
     </div>}
-
-    {/* ─── DISCLOSURE (bottom) ──────────────────────────────────────── */}
-    {activeTab !== 'more' ? <p className="disclosure">Передача в УК здесь учебная, пока управляющая организация не подключила официальный канал.</p> : null}
 
     {/* ─── BOTTOM SPACER ──────────────────────────────────────────── */}
     <div className="bottom-spacer"></div>
